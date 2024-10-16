@@ -29,8 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	corelisters "k8s.io/client-go/listers/core/v1"
-	toolscache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -44,33 +42,13 @@ import (
 )
 
 const (
-	ModelIdentifierKey                = "model.aibrix.ai/name"
-	ModelAdapterFinalizer             = "adapter.model.aibrix.ai/finalizer"
-	ModelAdapterPodTemplateLabelKey   = "adapter.model.aibrix.ai/enabled"
-	ModelAdapterPodTemplateLabelValue = "true"
+	ModelIdentifierKey = "model.aibrix.ai/name"
 
-	// Reasons for model adapter conditions
-	// Processing:
+	ModelInitializedReason       = "ModelPending"
+	FailedServiceCreateReason    = "ServiceCreateError"
+	FailedDeploymentCreateReason = "DeploymentCreateError"
 
-	// ModelAdapterInitializedReason is added in model adapter when it comes into the reconciliation loop.
-	ModelAdapterInitializedReason = "ModelAdapterPending"
-	// FailedServiceCreateReason is added in a model adapter when it cannot create a new service.
-	FailedServiceCreateReason = "ServiceCreateError"
-	// FailedEndpointSliceCreateReason is added in a model adapter when it cannot create a new replica set.
-	FailedEndpointSliceCreateReason = "EndpointSliceCreateError"
-	// ModelAdapterLoadingErrorReason is added in a model adapter when it cannot be loaded in an engine pod.
-	ModelAdapterLoadingErrorReason = "ModelAdapterLoadingError"
-	// ValidationFailedReason is added when model adapter object fails the validation
-	ValidationFailedReason = "ValidationFailed"
-	// StableInstanceFoundReason is added if there's stale pod and instance has been deleted successfully.
-	StableInstanceFoundReason = "StableInstanceFound"
-
-	// Available:
-
-	// ModelAdapterAvailable is added in a ModelAdapter when it has replicas available.
-	ModelAdapterAvailable = "ModelAdapterAvailable"
-	// ModelAdapterUnavailable is added in a ModelAdapter when it doesn't have any pod hosting it.
-	ModelAdapterUnavailable = "ModelAdapterUnavailable"
+	ModelAvailable = "ModelAvailable"
 )
 
 var (
@@ -91,28 +69,10 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
-	cacher := mgr.GetCache()
-
-	podInformer, err := cacher.GetInformer(context.TODO(), &corev1.Pod{})
-	if err != nil {
-		return nil, err
-	}
-
-	serviceInformer, err := cacher.GetInformer(context.TODO(), &corev1.Service{})
-	if err != nil {
-		return nil, err
-	}
-
-	// Let's generate the clientset and use ModelAdapterLister here as well.
-	podLister := corelisters.NewPodLister(podInformer.(toolscache.SharedIndexInformer).GetIndexer())
-	serviceLister := corelisters.NewServiceLister(serviceInformer.(toolscache.SharedIndexInformer).GetIndexer())
-
 	reconciler := &ModelReconciler{
-		Client:        mgr.GetClient(),
-		Scheme:        mgr.GetScheme(),
-		PodLister:     podLister,
-		ServiceLister: serviceLister,
-		Recorder:      mgr.GetEventRecorderFor(controllerName),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor(controllerName),
 	}
 	return reconciler, nil
 }
@@ -129,23 +89,17 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		))).
 		Complete(r)
 
-	klog.V(4).InfoS("Finished to add model-adapter-controller")
+	klog.V(4).InfoS("Finished to add model-controller")
 	return err
 }
 
 var _ reconcile.Reconciler = &ModelReconciler{}
 
-// ModelAdapterReconciler reconciles a ModelAdapter object
+// ModelReconciler reconciles a Model object
 type ModelReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
-
-	// PodLister is able to list/get pods from a shared informer's cache store
-	PodLister corelisters.PodLister
-	// ServiceLister is able to list/get services from a shared informer's cache store
-	ServiceLister corelisters.ServiceLister
-	// EndpointSliceLister is able to list/get services from a shared informer's cache store
 }
 
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
@@ -157,19 +111,19 @@ type ModelReconciler struct {
 //+kubebuilder:rbac:groups=model.aibrix.ai,resources=models,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=model.aibrix.ai,resources=models/status,verbs=get;update;patch
 
-// Reconcile reads that state of ModelAdapter object and makes changes based on the state read
-// and what is in the ModelAdapter.Spec
+// Reconcile reads that state of Model object and makes changes based on the state read
+// and what is in the Model.Spec
 func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	klog.V(4).InfoS("Starting to process Model", "model", req.NamespacedName)
 
-	// Fetch the ModelAdapter instance
+	// Fetch the Model instance
 	model := &modelv1alpha1.Model{}
 	err := r.Get(ctx, req.NamespacedName, model)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// Object not found, return.
 			// For service, endpoint objects, clean up the resources using finalizers
-			klog.InfoS("ModelAdapter resource not found. Ignoring since object mush be deleted", "modelAdapter", req.NamespacedName)
+			klog.InfoS("Model resource not found. Ignoring since object mush be deleted", "model", req.NamespacedName)
 			return reconcile.Result{}, nil
 		}
 
@@ -177,42 +131,6 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		klog.ErrorS(err, "Failed to get Model", "Model", klog.KObj(model))
 		return reconcile.Result{}, err
 	}
-
-	// if modelAdapter.ObjectMeta.DeletionTimestamp.IsZero() {
-	// 	// the object is not being deleted, so if it does not have the finalizer,
-	// 	// then lets add the finalizer and update the object.
-	// 	if !controllerutil.ContainsFinalizer(modelAdapter, ModelAdapterFinalizer) {
-	// 		klog.InfoS("Adding finalizer for ModelAdapter", "ModelAdapter", klog.KObj(modelAdapter))
-	// 		if ok := controllerutil.AddFinalizer(modelAdapter, ModelAdapterFinalizer); !ok {
-	// 			klog.Error("Failed to add finalizer for ModelAdapter")
-	// 			return ctrl.Result{Requeue: true}, nil
-	// 		}
-	// 		if err := r.Update(ctx, modelAdapter); err != nil {
-	// 			klog.Error("Failed to update custom resource to add finalizer")
-	// 			return ctrl.Result{}, err
-	// 		}
-	// 	}
-	// } else {
-	// 	// the object is being deleted
-	// 	if controllerutil.ContainsFinalizer(modelAdapter, ModelAdapterFinalizer) {
-	// 		// the finalizer is present, so let's unload lora from those inference engines
-	// 		// note: the base model pod could be deleted as well, so here we do best effort offloading
-	// 		// we do not need to reconcile the object if it encounters the unloading error.
-	// 		if err := r.unloadModelAdapter(modelAdapter); err != nil {
-	// 			return ctrl.Result{}, err
-	// 		}
-	// 		if ok := controllerutil.RemoveFinalizer(modelAdapter, ModelAdapterFinalizer); !ok {
-	// 			klog.Error("Failed to remove finalizer for ModelAdapter")
-	// 			return ctrl.Result{Requeue: true}, nil
-	// 		}
-	// 		if err := r.Update(ctx, modelAdapter); err != nil {
-	// 			klog.Error("Failed to update custom resource to remove finalizer")
-	// 			return ctrl.Result{}, err
-	// 		}
-	// 	}
-	// 	// Stop reconciliation as the item is being deleted
-	// 	return ctrl.Result{}, nil
-	// }
 
 	return r.DoReconcile(ctx, req, model)
 }
@@ -222,7 +140,7 @@ func (r *ModelReconciler) DoReconcile(ctx context.Context, req ctrl.Request, ins
 	if instance.Status.Conditions == nil || len(instance.Status.Conditions) == 0 {
 		instance.Status.Phase = modelv1alpha1.ModelPending
 		condition := NewCondition(string(modelv1alpha1.ModelConditionTypeInitialized), metav1.ConditionUnknown,
-			ModelAdapterInitializedReason, "Starting reconciliation")
+			ModelInitializedReason, "Starting reconciliation")
 		if err := r.updateStatus(ctx, instance, condition); err != nil {
 			return reconcile.Result{}, err
 		} else {
@@ -231,40 +149,26 @@ func (r *ModelReconciler) DoReconcile(ctx context.Context, req ctrl.Request, ins
 	}
 
 	oldInstance := instance.DeepCopy()
-	// Step 0: Validate ModelAdapter configurations
-	// if err := validateModelAdapter(instance); err != nil {
-	// 	klog.Error(err, "Failed to validate the ModelAdapter")
-	// 	instance.Status.Phase = modelv1alpha1.ModelAdapterFailed
-	// 	condition := NewCondition(string(modelv1alpha1.ModelAdapterPending), metav1.ConditionFalse,
-	// 		ValidationFailedReason, "ModelAdapter resource is not valid")
-	// 	// TODO: no need to update the status if the status remain the same
-	// 	if updateErr := r.updateStatus(ctx, instance, condition); updateErr != nil {
-	// 		klog.ErrorS(err, "Failed to update ModelAdapter status", "modelAdapter", klog.KObj(instance))
-	// 		return reconcile.Result{}, updateErr
-	// 	}
 
-	// 	return ctrl.Result{}, err
-	// }
-
-	// Step 3: Reconcile Service
+	// Step 1: Reconcile Service
 	if ctrlResult, err := r.reconcileService(ctx, instance); err != nil {
 		instance.Status.Phase = modelv1alpha1.ModelResourceCreated
 		condition := NewCondition(string(modelv1alpha1.ModelConditionTypeResourceCreated), metav1.ConditionFalse,
 			FailedServiceCreateReason, "service creation failure")
 		if err := r.updateStatus(ctx, instance, condition); err != nil {
-			klog.InfoS("Got error when updating status", req.Name, "error", err, "ModelAdapter", instance)
+			klog.InfoS("Got error when updating status", req.Name, "error", err, "Model", instance)
 			return ctrl.Result{}, err
 		}
 		return ctrlResult, err
 	}
 
-	// Step 4: Reconcile EndpointSlice
+	// Step 2: Reconcile Deployment
 	if ctrlResult, err := r.reconcileDeployment(ctx, instance); err != nil {
 		instance.Status.Phase = modelv1alpha1.ModelResourceCreated
 		condition := NewCondition(string(modelv1alpha1.ModelConditionTypeResourceCreated), metav1.ConditionFalse,
-			FailedEndpointSliceCreateReason, "deployment creation failure")
+			FailedDeploymentCreateReason, "deployment creation failure")
 		if err := r.updateStatus(ctx, instance, condition); err != nil {
-			klog.InfoS("Got error when updating status", "error", err, "ModelAdapter", instance)
+			klog.InfoS("Got error when updating status", "error", err, "Model", instance)
 			return ctrl.Result{}, err
 		}
 		return ctrlResult, err
@@ -272,10 +176,10 @@ func (r *ModelReconciler) DoReconcile(ctx context.Context, req ctrl.Request, ins
 
 	// Check if we need to update the status.
 	if r.inconsistentModelStatus(oldInstance.Status, instance.Status) {
-		condition := NewCondition(string(modelv1alpha1.ModelAdapterConditionReady), metav1.ConditionTrue,
-			ModelAdapterAvailable, fmt.Sprintf("ModelAdapter %s is ready", klog.KObj(instance)))
+		condition := NewCondition(string(modelv1alpha1.ModelConditionReady), metav1.ConditionTrue,
+			ModelAvailable, fmt.Sprintf("Model %s is ready", klog.KObj(instance)))
 		if err := r.updateStatus(ctx, instance, condition); err != nil {
-			return reconcile.Result{}, fmt.Errorf("update modelAdapter status error: %v", err)
+			return reconcile.Result{}, fmt.Errorf("update model status error: %v", err)
 		}
 	}
 
@@ -291,16 +195,16 @@ func (r *ModelReconciler) reconcileService(ctx context.Context, instance *modelv
 		svc := buildModelService(instance)
 		// Set the owner reference
 		if err := ctrl.SetControllerReference(instance, svc, r.Scheme); err != nil {
-			klog.Error(err, "Failed to set controller reference to modelAdapter")
+			klog.Error(err, "Failed to set controller reference to model")
 			return ctrl.Result{}, err
 		}
 
 		// create service
 		klog.InfoS("Creating a new service", "service", klog.KObj(svc))
 		if err = r.Create(ctx, svc); err != nil {
-			klog.ErrorS(err, "Failed to create new service resource for ModelAdapter", "service", klog.KObj(svc))
-			condition := NewCondition(string(modelv1alpha1.ModelAdapterConditionTypeResourceCreated), metav1.ConditionFalse,
-				FailedServiceCreateReason, fmt.Sprintf("Failed to create Service for the modeladapter (%s): (%s)", klog.KObj(instance), err))
+			klog.ErrorS(err, "Failed to create new service resource for Model", "service", klog.KObj(svc))
+			condition := NewCondition(string(modelv1alpha1.ModelConditionTypeResourceCreated), metav1.ConditionFalse,
+				FailedServiceCreateReason, fmt.Sprintf("Failed to create Service for the model (%s): (%s)", klog.KObj(instance), err))
 			if err := r.updateStatus(ctx, instance, condition); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -396,9 +300,9 @@ func buildModelDeployment(instance *modelv1alpha1.Model) *appsv1.Deployment {
 	}
 
 	deploymentLabels := map[string]string{
-		"model.aibrix.ai/name":            instance.Name,
-		"model.aibrix.ai/port":            "8000",
-		"adapter.model.aibrix.ai/enabled": "true",
+		"model.aibrix.ai/name":     instance.Name,
+		"model.aibrix.ai/port":     "8000",
+		".model.aibrix.ai/enabled": "true",
 	}
 
 	podTemplate := instance.Spec.Template
@@ -446,16 +350,12 @@ func NewCondition(condType string, status metav1.ConditionStatus, reason, msg st
 }
 
 func (r *ModelReconciler) updateStatus(ctx context.Context, instance *modelv1alpha1.Model, condition metav1.Condition) error {
-	klog.InfoS("model adapter reconcile", "Update CR status", instance.Name, "status", instance.Status)
+	klog.InfoS("model  reconcile", "Update CR status", instance.Name, "status", instance.Status)
 	meta.SetStatusCondition(&instance.Status.Conditions, condition)
 	return r.Status().Update(ctx, instance)
 }
 
 func (r *ModelReconciler) inconsistentModelStatus(oldStatus, newStatus modelv1alpha1.ModelStatus) bool {
 	// Implement your logic to check if the status is inconsistent
-	if oldStatus.Phase != newStatus.Phase {
-		return true
-	}
-
-	return false
+	return oldStatus.Phase != newStatus.Phase
 }
