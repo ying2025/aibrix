@@ -14,26 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package routingalgorithms
+package algorithm
 
-import (
-	"context"
+import "github.com/aibrix/aibrix/pkg/controller/podautoscaler/common"
 
-	v1 "k8s.io/api/core/v1"
-)
+// HpaScalingAlgorithm can be used by any scaler without customized algorithms
+type HpaScalingAlgorithm struct{}
 
-const (
-	num_requests_running  = "num_requests_running"
-	num_requests_waiting  = "num_requests_waiting"
-	num_requests_swapped  = "num_requests_swapped"
-	throughput_prompt     = "avg_prompt_throughput_toks_per_s"
-	throughput_generation = "avg_generation_throughput_toks_per_s"
-	latency               = "e2e_request_latency_seconds_sum"
+var _ ScalingAlgorithm = (*HpaScalingAlgorithm)(nil)
 
-	podPort = "8000"
-)
-
-type Router interface {
-	// Returns the target pod
-	Route(ctx context.Context, pods map[string]*v1.Pod) (string, error)
+func (a *HpaScalingAlgorithm) ComputeTargetReplicas(currentPodCount float64, context common.ScalingContext) int32 {
+	// TODO: implement me!
+	return int32(currentPodCount)
 }
