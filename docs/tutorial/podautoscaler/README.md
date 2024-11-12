@@ -13,14 +13,9 @@ Go into the root directory:
 cd $AIBrix_HOME
 ```
 
-First, build and install the Custom Resource Definitions (CRDs) for AIBrix:
+First, please refer [README](../../../README.md) to build and install AIBrix.
 
-```shell
-
-make manifests && make build && make install
-```
-
-Verify the installation:
+After building the manager, you can verify the installation:
 
 ```shell
 kubectl get crds | grep podautoscalers
@@ -62,8 +57,8 @@ kubectl port-forward svc/llama2-70b 8000:8000 -n aibrix-system
 It's different from `make run`, since it may reveal the RBAC problem when manager what to watch HPA.
 
 ```shell
-make docker-build IMG=aibrix/aibrix-controller-manager:v0.1.0-rc.0
-make deploy IMG=aibrix/aibrix-controller-manager:v0.1.0-rc.0
+make docker-build IMG=aibrix/aibrix-controller-manager:v0.1.0-rc.4
+make deploy IMG=aibrix/aibrix-controller-manager:v0.1.0-rc.4
 ```
 
 check the deployed manager logs:
@@ -384,7 +379,9 @@ Events:
 
 # Cleanup
 
-To clean up the resources:
+Please refer [README](../../../README.md) to uninstall AIBrix.
+
+To clean up the additional resources created in this tutorial:
 
 ```shell
 # Remove AIBrix resources

@@ -17,7 +17,6 @@ limitations under the License.
 package podautoscaler
 
 import (
-	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -35,19 +34,16 @@ var (
 	controllerKind = pav1.GroupVersion.WithKind("PodAutoScaler") // Define the resource type for the controller
 )
 
-func getHPANameFromPa(pa *pav1.PodAutoscaler) string {
-	return fmt.Sprintf("%s-hpa", pa.Name)
-}
-
 // MakeHPA creates an HPA resource from a PodAutoscaler resource.
 func makeHPA(pa *pav1.PodAutoscaler) *autoscalingv2.HorizontalPodAutoscaler {
 	minReplicas, maxReplicas := pa.Spec.MinReplicas, pa.Spec.MaxReplicas
+	// TODO: add some validation logics, has to be larger than minReplicas
 	if maxReplicas == 0 {
 		maxReplicas = math.MaxInt32 // Set default to no upper limit if not specified
 	}
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        getHPANameFromPa(pa),
+			Name:        pa.Name,
 			Namespace:   pa.Namespace,
 			Labels:      pa.Labels,
 			Annotations: pa.Annotations,
@@ -75,14 +71,14 @@ func makeHPA(pa *pav1.PodAutoscaler) *autoscalingv2.HorizontalPodAutoscaler {
 
 		switch strings.ToLower(pa.Spec.TargetMetric) {
 		case pav1.CPU:
-			utilValue := int32(math.Ceil(targetValue))
+			cpu := int32(math.Ceil(targetValue))
 			hpa.Spec.Metrics = []autoscalingv2.MetricSpec{{
 				Type: autoscalingv2.ResourceMetricSourceType,
 				Resource: &autoscalingv2.ResourceMetricSource{
 					Name: corev1.ResourceCPU,
 					Target: autoscalingv2.MetricTarget{
 						Type:               autoscalingv2.UtilizationMetricType,
-						AverageUtilization: &utilValue,
+						AverageUtilization: &cpu,
 					},
 				},
 			}}
