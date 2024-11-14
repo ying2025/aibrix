@@ -125,11 +125,15 @@ func (s *Server) Process(srv extProcPb.ExternalProcessor_ProcessServer) error {
 		case *extProcPb.ProcessingRequest_RequestBody:
 			resp, targetPodIP, stream = s.HandleRequestBody(ctx, requestID, req, user, routingStrategy)
 
+		case *extProcPb.ProcessingRequest_ResponseHeaders:
+			resp = s.HandleResponseHeaders(ctx, requestID, req, targetPodIP)
+
 		case *extProcPb.ProcessingRequest_ResponseBody:
 			resp = s.HandleResponseBody(ctx, requestID, req, user, targetPodIP, stream)
 
 		default:
 			klog.Infof("Unknown Request type %+v\n", v)
+			resp = buildErrorResponse(envoyTypePb.StatusCode_NotFound, "unknown processing request to gateway", "x-unknown-processing-request", "true")
 		}
 
 		if err := srv.Send(resp); err != nil {
@@ -155,18 +159,16 @@ func (s *Server) HandleRequestHeaders(ctx context.Context, requestID string, req
 
 	routingStrategy, routingStrategyEnabled := getRoutingStrategy(h.RequestHeaders.Headers.Headers)
 	if routingStrategyEnabled && !validateRoutingStrategy(routingStrategy) {
-		return generateErrorResponse(
-			envoyTypePb.StatusCode_BadRequest,
-			[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
-				Key: "x-incorrect-routing-strategy", RawValue: []byte(routingStrategy),
-			}}}, ""), utils.User{}, routingStrategy
+		errMsg := fmt.Sprintf("invalid routing strategy: %s", routingStrategy)
+		klog.ErrorS(nil, errMsg, "requestID", requestID)
+		return buildErrorResponse(envoyTypePb.StatusCode_BadRequest, errMsg, "x-invalid-routing-strategy", "true"), utils.User{}, routingStrategy
 	}
 
 	if username != "" {
 		user, err = utils.GetUser(utils.User{Name: username}, s.redisClient)
 		if err != nil {
 			klog.ErrorS(err, "unable to process user info", "requestID", requestID, "username", username)
-			return buildErrorResponse(InternalServerError, err.Error(), "x-error-get-user", "true"), utils.User{}, routingStrategy
+			return buildErrorResponse(InternalServerError, err.Error(), "x-error-get-user", "true", "username", username), utils.User{}, routingStrategy
 		}
 
 		errRes, err = s.CheckLimits(ctx, user)
@@ -275,6 +277,38 @@ func (s *Server) HandleRequestBody(ctx context.Context, requestID string, req *e
 	}, targetPodIP, stream
 }
 
+func (s *Server) HandleResponseHeaders(ctx context.Context, requestID string, req *extProcPb.ProcessingRequest, targetPodIP string) *extProcPb.ProcessingResponse {
+	klog.InfoS("-- In ResponseHeaders processing ...", "requestID", requestID)
+
+	headers := []*configPb.HeaderValueOption{{
+		Header: &configPb.HeaderValue{
+			Key:      "x-went-into-resp-headers",
+			RawValue: []byte("true"),
+		},
+	}}
+	if targetPodIP != "" {
+		headers = append(headers, &configPb.HeaderValueOption{
+			Header: &configPb.HeaderValue{
+				Key:      "target-pod",
+				RawValue: []byte(targetPodIP),
+			},
+		})
+	}
+
+	return &extProcPb.ProcessingResponse{
+		Response: &extProcPb.ProcessingResponse_ResponseHeaders{
+			ResponseHeaders: &extProcPb.HeadersResponse{
+				Response: &extProcPb.CommonResponse{
+					HeaderMutation: &extProcPb.HeaderMutation{
+						SetHeaders: headers,
+					},
+					ClearRouteCache: true,
+				},
+			},
+		},
+	}
+}
+
 func (s *Server) HandleResponseBody(ctx context.Context, requestID string, req *extProcPb.ProcessingRequest, user utils.User, targetPodIP string, stream bool) *extProcPb.ProcessingResponse {
 	klog.InfoS("-- In ResponseBody processing ...", "requestID", requestID)
 	b := req.Request.(*extProcPb.ProcessingRequest_ResponseBody)
@@ -377,17 +411,17 @@ func (s *Server) CheckLimits(ctx context.Context, user utils.User) (*extProcPb.P
 
 	code, err := s.checkRPM(ctx, user.Name, user.Rpm)
 	if err != nil {
-		return buildErrorResponse(code, err.Error(), "x-rpm-exceeded", "true"), err
+		return buildErrorResponse(code, err.Error(), "x-exceeded-rpm", "true", "username", user.Name), err
 	}
 
 	code, err = s.checkTPM(ctx, user.Name, user.Tpm)
 	if err != nil {
-		return buildErrorResponse(code, err.Error(), "x-tpm-exceeded", "true"), err
+		return buildErrorResponse(code, err.Error(), "x-exceeded-tpm", "true", "username", user.Name), err
 	}
 
 	code, err = s.incrRPM(ctx, user.Name)
 	if err != nil {
-		return buildErrorResponse(code, err.Error(), "x-error-incr-rpm", "true"), err
+		return buildErrorResponse(code, err.Error(), "x-error-incr-rpm", "true", "username", user.Name), err
 	}
 
 	return nil, nil
