@@ -192,36 +192,25 @@ func (s *Server) HandleRequestBody(ctx context.Context, requestID string, req *e
 
 	body := req.Request.(*extProcPb.ProcessingRequest_RequestBody)
 	if err := json.Unmarshal(body.RequestBody.GetBody(), &jsonMap); err != nil {
-		klog.ErrorS(err, "error to unmarshal response", "requestID", requestID, "requestBody", string(body.RequestBody.GetBody()))
-		return generateErrorResponse(envoyTypePb.StatusCode_InternalServerError,
-			[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
-				Key: "x-request-body-processing-error", RawValue: []byte("true")}}},
-			"error processing request body"), targetPodIP, stream
+		klog.ErrorS(err, "error to unmarshal request body", "requestID", requestID, "requestBody", string(body.RequestBody.GetBody()))
+		return buildErrorResponse(InternalServerError, "error processing request body", "x-error-request-body-processing", "true"), targetPodIP, stream
 	}
 
 	if model, ok = jsonMap["model"].(string); !ok || model == "" { // || !s.cache.CheckModelExists(model) # enable when dynamic lora is enabled
 		klog.ErrorS(nil, "model error in request", "requestID", requestID, "jsonMap", jsonMap)
-		return generateErrorResponse(envoyTypePb.StatusCode_InternalServerError,
-			[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
-				Key: "x-no-model", RawValue: []byte(model)}}},
-			fmt.Sprintf("no model in request body or model %s does not exist", model)), targetPodIP, stream
+		return buildErrorResponse(InternalServerError,
+			fmt.Sprintf("no model in request body or model %s does not exist", model), "x-missing-model", "true"), targetPodIP, stream
 	}
 
 	stream, ok = jsonMap["stream"].(bool)
 	if stream && ok {
 		streamOptions, ok := jsonMap["stream_options"].(map[string]interface{})
 		if !ok {
-			return generateErrorResponse(envoyTypePb.StatusCode_InternalServerError,
-				[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
-					Key: "x-stream-options", RawValue: []byte("stream options not set")}}},
-				"error processing request body"), targetPodIP, stream
+			return buildErrorResponse(InternalServerError, "stream_options is missing", "x-missing-stream-options", "true"), targetPodIP, stream
 		}
 		includeUsage, ok := streamOptions["include_usage"].(bool)
 		if !includeUsage || !ok {
-			return generateErrorResponse(envoyTypePb.StatusCode_InternalServerError,
-				[]*configPb.HeaderValueOption{{Header: &configPb.HeaderValue{
-					Key: "x-stream-options-include-usage", RawValue: []byte("include usage for stream options not set")}}},
-				"error processing request body"), targetPodIP, stream
+			return buildErrorResponse(InternalServerError, "stream_options is incorrect", "x-error-stream-options-include-usage", "true"), targetPodIP, stream
 		}
 	}
 
@@ -408,20 +397,4 @@ func (s *Server) checkTPM(ctx context.Context, username string, tpmLimit int64) 
 	}
 
 	return envoyTypePb.StatusCode_OK, nil
-}
-
-func generateErrorResponse(statusCode envoyTypePb.StatusCode, headers []*configPb.HeaderValueOption, body string) *extProcPb.ProcessingResponse {
-	return &extProcPb.ProcessingResponse{
-		Response: &extProcPb.ProcessingResponse_ImmediateResponse{
-			ImmediateResponse: &extProcPb.ImmediateResponse{
-				Status: &envoyTypePb.HttpStatus{
-					Code: statusCode,
-				},
-				Headers: &extProcPb.HeaderMutation{
-					SetHeaders: headers,
-				},
-				Body: body,
-			},
-		},
-	}
 }
