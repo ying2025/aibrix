@@ -17,6 +17,7 @@ limitations under the License.
 package gateway
 
 import (
+	"context"
 	"slices"
 	"strings"
 
@@ -59,6 +60,31 @@ func validateRoutingStrategy(routingStrategy string) bool {
 	return slices.Contains(routingStrategies, routingStrategy)
 }
 
+func (s *Server) validateUserConfig(ctx context.Context, headers []*configPb.HeaderValue) (utils.User, *extProcPb.ProcessingResponse, error) {
+	var username string
+	var user utils.User
+	var err error
+	for _, n := range headers {
+		if strings.ToLower(n.Key) == "user" {
+			username = string(n.RawValue)
+		}
+	}
+
+	if username != "" {
+		user, err = utils.GetUser(utils.User{Name: username}, s.redisClient)
+		if err != nil {
+			return user, buildErrorResponse(InternalServerError, err.Error(), "x-error-get-user", "true", "username", username), err
+		}
+
+		errRes, err := s.CheckLimits(ctx, user)
+		if errRes != nil {
+			return user, errRes, err
+		}
+	}
+
+	return user, nil, nil
+}
+
 func buildErrorResponse(statusCode envoyTypePb.StatusCode, errBody string, headers ...string) *extProcPb.ProcessingResponse {
 	return &extProcPb.ProcessingResponse{
 		Response: &extProcPb.ProcessingResponse_ImmediateResponse{
@@ -80,7 +106,7 @@ func buildEnvoyProxyHeaders(headers []*configPb.HeaderValueOption, keyValues ...
 		return headers
 	}
 
-	for i := 0; i < len(headers); {
+	for i := 0; i < len(keyValues); {
 		headers = append(headers,
 			&configPb.HeaderValueOption{
 				Header: &configPb.HeaderValue{
