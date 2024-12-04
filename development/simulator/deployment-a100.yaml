@@ -150,11 +150,11 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: simulator-llama2-7b-a100
-  minReplicas: 0
+  minReplicas: 1
   maxReplicas: 10
   targetMetric: "avg_prompt_throughput_toks_per_s" # Ignore if metricsSources is configured
   metricsSources: 
-    - endpoint: gpu-optimizer.aibrix-system.svc.cluster.local:8080
+    - endpoint: aibrix-gpu-optimizer.aibrix-system.svc.cluster.local:8080
       path: /metrics/aibrix-system/simulator-llama2-7b-a100
       metric: "vllm:deployment_replicas"
   targetValue: "1"

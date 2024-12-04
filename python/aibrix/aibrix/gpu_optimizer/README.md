@@ -28,7 +28,7 @@ kubectl -n aibrix-system port-forward svc/aibrix-redis-master 6379:6379 1>/dev/n
 # Or use make
 make debug-init
 
-python optimizer/profiling/gen-profile.py simulator-llama2-7b-a100 -o "redis://localhost:6379/?model=llama2-7b"
+python optimizer/profiling/gen_profile.py simulator-llama2-7b-a100 -o "redis://localhost:6379/?model=llama2-7b"
 # Or use make
 make DP=simulator-llama2-7b-a100 gen-profile
 ```
@@ -36,7 +36,7 @@ make DP=simulator-llama2-7b-a100 gen-profile
 5. Deploy GPU Optimizer
 ```shell
 kubectl apply -f deployment.yaml
-kubectl -n aibrix-system port-forward svc/gpu-optimizer 8080:8080 1>/dev/null 2>&1 &
+kubectl -n aibrix-system port-forward svc/aibrix-gpu-optimizer 8080:8080 1>/dev/null 2>&1 &
 
 # Or use make
 make deploy
@@ -47,7 +47,7 @@ make deploy
 5. Start workload and see how model scale. Benchmark toolkit can be used to generate workload as:
 ```shell
 # Make sure gateway's local access, see docs/development/simulator/README.md for details.
-python optimizer/profiling/gpu-benchmark.py --backend=vllm --port 8888 --request-rate=10 --num-prompts=100 --input_len 2000 --output_len 128 --model=llama2-7b
+python optimizer/profiling/gpu_benchmark.py --backend=vllm --port 8888 --request-rate=10 --num-prompts=100 --input_len 2000 --output_len 128 --model=llama2-7b
 ```
 
 6. Observability: visit http://localhost:8080/dash/llama2-7b for workload pattern visualization. A independent visualization demo can access by:
