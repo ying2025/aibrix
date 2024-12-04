@@ -34,6 +34,12 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	APALabelPrefix                = "apa." + scalingcontext.AutoscalingLabelPrefix
+	upFluctuationToleranceLabel   = APALabelPrefix + "up-fluctuation-tolerance"
+	downFluctuationToleranceLabel = APALabelPrefix + "down-fluctuation-tolerance"
+)
+
 // ApaScalingContext defines parameters for scaling decisions.
 type ApaScalingContext struct {
 	scalingcontext.BaseScalingContext
@@ -45,6 +51,8 @@ type ApaScalingContext struct {
 	// UpFluctuationTolerance represents the threshold before scaling down,
 	// which means no scaling down will occur unless the currentMetricValue is less than the TargetValue by more than UpFluctuationTolerance
 	DownFluctuationTolerance float64
+	// metric window length
+	Window time.Duration
 }
 
 // NewApaScalingContext references KPA and sets up a default configuration.
@@ -53,7 +61,18 @@ func NewApaScalingContext() *ApaScalingContext {
 		BaseScalingContext:       *scalingcontext.NewBaseScalingContext(),
 		UpFluctuationTolerance:   0.1, // Tolerance for scaling up, set at 10%
 		DownFluctuationTolerance: 0.2, // Tolerance for scaling up, set at 10%
+		Window:                   time.Second * 60,
 	}
+}
+
+// NewApaScalingContextByPa initializes ApaScalingContext by passed-in PodAutoscaler description
+func NewApaScalingContextByPa(pa *autoscalingv1alpha1.PodAutoscaler) (*ApaScalingContext, error) {
+	res := NewApaScalingContext()
+	err := res.UpdateByPaTypes(pa)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 var _ common.ScalingContext = (*ApaScalingContext)(nil)
@@ -73,9 +92,14 @@ type ApaAutoscaler struct {
 var _ Scaler = (*ApaAutoscaler)(nil)
 
 // NewApaAutoscaler Initialize ApaAutoscaler
-func NewApaAutoscaler(readyPodsCount int, spec *ApaScalingContext) (*ApaAutoscaler, error) {
+func NewApaAutoscaler(readyPodsCount int, pa *autoscalingv1alpha1.PodAutoscaler) (*ApaAutoscaler, error) {
+	spec, err := NewApaScalingContextByPa(pa)
+	if err != nil {
+		return nil, err
+	}
+
 	metricsFetcher := &metrics.RestMetricsFetcher{}
-	metricsClient := metrics.NewAPAMetricsClient(metricsFetcher)
+	metricsClient := metrics.NewAPAMetricsClient(metricsFetcher, spec.Window)
 	scalingAlgorithm := algorithm.ApaScalingAlgorithm{}
 
 	return &ApaAutoscaler{
@@ -83,6 +107,30 @@ func NewApaAutoscaler(readyPodsCount int, spec *ApaScalingContext) (*ApaAutoscal
 		algorithm:      &scalingAlgorithm,
 		scalingContext: spec,
 	}, nil
+}
+
+func (a *ApaScalingContext) UpdateByPaTypes(pa *autoscalingv1alpha1.PodAutoscaler) error {
+	err := a.BaseScalingContext.UpdateByPaTypes(pa)
+	if err != nil {
+		return err
+	}
+	for key, value := range pa.Labels {
+		switch key {
+		case upFluctuationToleranceLabel:
+			v, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				return err
+			}
+			a.UpFluctuationTolerance = v
+		case downFluctuationToleranceLabel:
+			v, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				return err
+			}
+			a.DownFluctuationTolerance = v
+		}
+	}
+	return nil
 }
 
 func (a *ApaAutoscaler) Scale(originalReadyPodsCount int, metricKey metrics.NamespaceNameMetric, now time.Time) ScaleResult {
@@ -127,18 +175,32 @@ func (a *ApaAutoscaler) UpdateScaleTargetMetrics(ctx context.Context, metricKey 
 	return nil
 }
 
+func (a *ApaAutoscaler) UpdateSourceMetrics(ctx context.Context, metricKey metrics.NamespaceNameMetric, source autoscalingv1alpha1.MetricSource, now time.Time) error {
+	metricValue, err := a.metricClient.GetMetricFromSource(ctx, source)
+	if err != nil {
+		return err
+	}
+
+	return a.metricClient.UpdateMetrics(now, metricKey, metricValue)
+}
+
 func (a *ApaAutoscaler) UpdateScalingContext(pa autoscalingv1alpha1.PodAutoscaler) error {
 	a.specMux.Lock()
 	defer a.specMux.Unlock()
 
-	targetValue, err := strconv.ParseFloat(pa.Spec.TargetValue, 64)
+	// update context and check configuration restraint.
+	// N.B. for now, we forbid update the config related to the stateful attribute, like window length.
+	updatedSpec, err := NewApaScalingContextByPa(&pa)
 	if err != nil {
-		klog.ErrorS(err, "Failed to parse target value", "targetValue", pa.Spec.TargetValue)
 		return err
 	}
-	a.scalingContext.TargetValue = targetValue
-	a.scalingContext.ScalingMetric = pa.Spec.TargetMetric
-
+	// check apa spec: panic window, stable window and delaywindow
+	rawSpec := a.scalingContext
+	if updatedSpec.Window != rawSpec.Window {
+		klog.Warningf("For APA, updating the Window (%v) is not allowed. Keep the original value (%v)", updatedSpec.Window, rawSpec.Window)
+		updatedSpec.Window = rawSpec.Window
+	}
+	a.scalingContext = updatedSpec
 	return nil
 }
 

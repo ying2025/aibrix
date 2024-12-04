@@ -20,6 +20,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aibrix/aibrix/pkg/controller/podautoscaler/algorithm"
+
+	autoscalingv1alpha1 "github.com/aibrix/aibrix/api/autoscaling/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/aibrix/aibrix/pkg/controller/podautoscaler/metrics"
 )
 
@@ -29,24 +35,24 @@ func TestAPAScale(t *testing.T) {
 	t.Skip("Skipping this test")
 
 	readyPodCount := 5
+	spec := NewApaScalingContext()
 	metricsFetcher := &metrics.RestMetricsFetcher{}
-	kpaMetricsClient := metrics.NewKPAMetricsClient(metricsFetcher)
+	apaMetricsClient := metrics.NewAPAMetricsClient(metricsFetcher, spec.Window)
 	now := time.Now()
 	metricKey := metrics.NewNamespaceNameMetric("test_ns", "llama-70b", "ttot")
-	_ = kpaMetricsClient.UpdateMetricIntoWindow(metricKey, now.Add(-60*time.Second), 10.0)
-	_ = kpaMetricsClient.UpdateMetricIntoWindow(metricKey, now.Add(-50*time.Second), 11.0)
-	_ = kpaMetricsClient.UpdateMetricIntoWindow(metricKey, now.Add(-40*time.Second), 12.0)
-	_ = kpaMetricsClient.UpdateMetricIntoWindow(metricKey, now.Add(-30*time.Second), 13.0)
-	_ = kpaMetricsClient.UpdateMetricIntoWindow(metricKey, now.Add(-20*time.Second), 14.0)
-	_ = kpaMetricsClient.UpdateMetricIntoWindow(metricKey, now.Add(-10*time.Second), 100.0)
+	_ = apaMetricsClient.UpdateMetricIntoWindow(now.Add(-60*time.Second), 10.0)
+	_ = apaMetricsClient.UpdateMetricIntoWindow(now.Add(-50*time.Second), 11.0)
+	_ = apaMetricsClient.UpdateMetricIntoWindow(now.Add(-40*time.Second), 12.0)
+	_ = apaMetricsClient.UpdateMetricIntoWindow(now.Add(-30*time.Second), 13.0)
+	_ = apaMetricsClient.UpdateMetricIntoWindow(now.Add(-20*time.Second), 14.0)
+	_ = apaMetricsClient.UpdateMetricIntoWindow(now.Add(-10*time.Second), 100.0)
 
-	apaScaler, err := NewApaAutoscaler(readyPodCount,
-		&ApaScalingContext{},
-	)
-	apaScaler.metricClient = kpaMetricsClient
-	if err != nil {
-		t.Errorf("Failed to create KpaAutoscaler: %v", err)
+	apaScaler := ApaAutoscaler{
+		metricClient:   apaMetricsClient,
+		algorithm:      &algorithm.ApaScalingAlgorithm{},
+		scalingContext: spec,
 	}
+	apaScaler.metricClient = apaMetricsClient
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
@@ -66,4 +72,53 @@ func TestAPAScale(t *testing.T) {
 	if result.DesiredPodCount != int32(readyPodCount) {
 		t.Errorf("result should remain previous replica = %d, but got %d", readyPodCount, result.DesiredPodCount)
 	}
+}
+
+func TestApaUpdateContext(t *testing.T) {
+	pa := &autoscalingv1alpha1.PodAutoscaler{
+		Spec: autoscalingv1alpha1.PodAutoscalerSpec{
+			ScaleTargetRef: corev1.ObjectReference{
+				Kind: "Deployment",
+				Name: "example-deployment",
+			},
+			MinReplicas:  nil, // expecting nil as default since it's a pointer and no value is assigned
+			MaxReplicas:  5,
+			TargetValue:  "1",
+			TargetMetric: "test.metrics",
+			MetricsSources: []autoscalingv1alpha1.MetricSource{
+				{
+					Endpoint: "service1.example.com",
+					Path:     "/api/metrics/cpu",
+				},
+			},
+			ScalingStrategy: "APA",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"autoscaling.aibrix.ai/max-scale-up-rate":              "32.1",
+				"autoscaling.aibrix.ai/max-scale-down-rate":            "12.3",
+				"apa.autoscaling.aibrix.ai/up-fluctuation-tolerance":   "1.2",
+				"apa.autoscaling.aibrix.ai/down-fluctuation-tolerance": "0.9",
+			},
+		},
+	}
+	apaSpec := NewApaScalingContext()
+	err := apaSpec.UpdateByPaTypes(pa)
+	if err != nil {
+		t.Errorf("Failed to update KpaScalingContext: %v", err)
+	}
+	if apaSpec.MaxScaleUpRate != 32.1 {
+		t.Errorf("expected MaxScaleDownRate = 32.1, got %f", apaSpec.MaxScaleDownRate)
+	}
+	if apaSpec.MaxScaleDownRate != 12.3 {
+		t.Errorf("expected MaxScaleDownRate = 12.3, got %f", apaSpec.MaxScaleDownRate)
+	}
+
+	if apaSpec.UpFluctuationTolerance != 1.2 {
+		t.Errorf("expected UpFluctuationTolerance = 1.2, got %f", apaSpec.UpFluctuationTolerance)
+	}
+	if apaSpec.DownFluctuationTolerance != 0.9 {
+		t.Errorf("expected DownFluctuationTolerance = 0.9, got %f", apaSpec.DownFluctuationTolerance)
+	}
+
 }

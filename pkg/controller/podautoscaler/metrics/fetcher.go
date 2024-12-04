@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,54 +44,65 @@ const (
 
 // MetricFetcher defines an interface for fetching metrics. it could be Kubernetes metrics or Pod prometheus metrics.
 type MetricFetcher interface {
+	// Obseleted: Call FetchMetric instead.
 	FetchPodMetrics(ctx context.Context, pod v1.Pod, metricsPort int, metricName string) (float64, error)
+
+	FetchMetric(ctx context.Context, endpoint string, path string, metricName string) (float64, error)
+}
+
+type abstractMetricsFetcher struct{}
+
+func (f *abstractMetricsFetcher) FetchMetric(ctx context.Context, pod v1.Pod, metricsPort int, metricName string) (float64, error) {
+	return 0.0, fmt.Errorf("not implemented")
 }
 
 // RestMetricsFetcher implements MetricFetcher to fetch metrics from Pod's /metrics endpoint.
 type RestMetricsFetcher struct{}
 
 func (f *RestMetricsFetcher) FetchPodMetrics(ctx context.Context, pod v1.Pod, metricsPort int, metricName string) (float64, error) {
-	// Use http to fetch pod's /metrics endpoint and parse the value
-	url := fmt.Sprintf("http://%s:%d/metrics", pod.Status.PodIP, metricsPort)
+	// Use /metrics to fetch pod's endpoint
+	return f.FetchMetric(ctx, fmt.Sprintf("%s:%d", pod.Status.PodIP, metricsPort), "/metrics", metricName)
+}
 
-	key := "DEBUG_MODE"
-	value, exists := getEnvKey(key)
+func (f *RestMetricsFetcher) FetchMetric(ctx context.Context, endpoint string, path string, metricName string) (float64, error) {
+	// Use http to fetch endpoint
+	url := fmt.Sprintf("http://%s/%s", endpoint, strings.TrimLeft(path, "/"))
 
-	if exists && value == "on" {
-		// 30080 is the nodePort of the base model service.
-		url = fmt.Sprintf("http://%s:8000/metrics", "localhost")
-	}
-
-	// TODO a temp for debugging
-	//url := fmt.Sprintf("http://%s:%d/metrics", "127.0.0.1", metricsPort)
-	resp, err := http.Get(url)
+	// Create request with context, so that the request will be canceled if the context is canceled
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to fetch metrics from pod %s %s %d: %v", pod.Name, pod.Status.PodIP, metricsPort, err)
+		return 0.0, fmt.Errorf("failed to create request to source %s: %v", url, err)
 	}
 
+	// Send the request using the default client
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0.0, fmt.Errorf("failed to fetch metrics from source %s: %v", url, err)
+	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			klog.ErrorS(err, "Error closing response body")
+			// Handle the error here. For example, log it or take appropriate corrective action.
+			klog.InfoS("Error closing response body:", err)
 		}
 	}()
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read response from pod %s %s %d: %v", pod.Name, pod.Status.PodIP, metricsPort, err)
+		return 0.0, fmt.Errorf("failed to read response from source %s: %v", url, err)
 	}
 
 	metricValue, err := ParseMetricFromBody(body, metricName)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse metrics from pod %s %s %d: %v", pod.Name, pod.Status.PodIP, metricsPort, err)
+		return 0.0, fmt.Errorf("failed to parse metrics from source %s: %v", url, err)
 	}
 
-	klog.InfoS("Successfully parsed metrics", "metric", metricName, "PodIP", pod.Status.PodIP, "Port", metricsPort, "metricValue", metricValue)
+	klog.InfoS("Successfully parsed metrics", "metric", metricName, "source", url, "metricValue", metricValue)
 
 	return metricValue, nil
 }
 
 // ResourceMetricsFetcher fetches resource metrics from Kubernetes metrics API (metrics.k8s.io).
 type ResourceMetricsFetcher struct {
+	abstractMetricsFetcher
 	metricsClient *versioned.Clientset
 }
 
@@ -118,6 +130,7 @@ func (f *ResourceMetricsFetcher) FetchPodMetrics(ctx context.Context, pod v1.Pod
 
 // CustomMetricsFetcher fetches custom metrics from Kubernetes' native Custom Metrics API.
 type CustomMetricsFetcher struct {
+	abstractMetricsFetcher
 	customMetricsClient custom_metrics.CustomMetricsClient
 }
 
@@ -151,6 +164,7 @@ func (f *CustomMetricsFetcher) FetchPodMetrics(ctx context.Context, pod v1.Pod, 
 }
 
 type KubernetesMetricsFetcher struct {
+	abstractMetricsFetcher
 	resourceFetcher *ResourceMetricsFetcher
 	customFetcher   *CustomMetricsFetcher
 }

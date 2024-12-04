@@ -78,27 +78,39 @@ spec:
             - name: dshm
               mountPath: /dev/shm
         - name: aibrix-runtime
-          image: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/runtime:v0.1.0-rc.4
+          image: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/runtime:v0.1.1
           command:
-            - gunicorn
-            - -b
-            - :8080
-            - app:app
-            - -k
-            - uvicorn.workers.UvicornWorker
+            - aibrix_runtime
+            - --port
+            - "8080"
+          env:
+            - name: INFERENCE_ENGINE
+              value: vllm
+            - name: INFERENCE_ENGINE_ENDPOINT
+              value: http://localhost:8000
           ports:
             - containerPort: 8080
               protocol: TCP
           volumeMounts:
             - mountPath: /models
               name: model-hostpath
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 2
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
       initContainers:
         - name: init-model
-          image: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/runtime:v0.1.0-rc.4
+          image: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/runtime:v0.1.1
           command:
-            - python
-            - -m
-            - aibrix.downloader
+            - aibrix_download
             - --model-uri
             - tos://aibrix-artifact-testing/models/deepseek-ai/deepseek-coder-6.7b-instruct/
             - --local-dir
@@ -157,7 +169,7 @@ metadata:
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "8000"
-  name: aibrix-deepseek-coder-7b-instruct-svc
+  name: deepseek-coder-7b-instruct
   namespace: default
 spec:
   ports:
@@ -165,10 +177,6 @@ spec:
       port: 8000
       protocol: TCP
       targetPort: 8000
-    - name: http
-      port: 8080
-      protocol: TCP
-      targetPort: 8080
   selector:
     model.aibrix.ai/name: deepseek-coder-7b-instruct
   type: LoadBalancer

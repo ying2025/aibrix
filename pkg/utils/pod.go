@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/klog/v2"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -128,10 +130,23 @@ func CountReadyPods(podList *v1.PodList) (int64, error) {
 
 	readyPodCount := 0
 	for _, pod := range podList.Items {
-		if pod.Status.Phase == v1.PodRunning && IsPodReady(&pod) {
+		isReady := IsPodReady(&pod)
+		if pod.Status.Phase == v1.PodRunning && isReady {
 			readyPodCount++
 		}
+		klog.V(4).InfoS("CountReadyPods Pod status", "name", pod.Name, "phase", pod.Status.Phase, "ready", isReady)
 	}
 
 	return int64(readyPodCount), nil
+}
+
+// FilterReadyPods filters and returns a list of pods that have a valid PodIP.
+func FilterReadyPods(pods map[string]*v1.Pod) []*v1.Pod {
+	var readyPods []*v1.Pod
+	for _, pod := range pods {
+		if pod.Status.PodIP != "" && IsPodReady(pod) {
+			readyPods = append(readyPods, pod)
+		}
+	}
+	return readyPods
 }

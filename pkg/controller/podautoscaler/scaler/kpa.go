@@ -59,6 +59,15 @@ If the metric no longer exceeds the panic threshold, exit the panic mode.
 
 */
 
+const (
+	KPALabelPrefix           = "kpa." + scalingcontext.AutoscalingLabelPrefix
+	targetBurstCapacityLabel = KPALabelPrefix + "target-burst-capacity"
+	activationScaleLabel     = KPALabelPrefix + "activation-scale"
+	panicThresholdLabel      = KPALabelPrefix + "panic-threshold"
+	stableWindowLabel        = KPALabelPrefix + "stable-window"
+	scaleDownDelayLabel      = KPALabelPrefix + "scale-down-delay"
+)
+
 // KpaScalingContext defines parameters for scaling decisions.
 type KpaScalingContext struct {
 	scalingcontext.BaseScalingContext
@@ -81,6 +90,8 @@ type KpaScalingContext struct {
 	PanicThreshold float64
 	// StableWindow is needed to determine when to exit panic mode.
 	StableWindow time.Duration
+	// PanicWindow is needed to determine when to exit panic mode.
+	PanicWindow time.Duration
 	// ScaleDownDelay is the time that must pass at reduced concurrency before a
 	// scale-down decision is applied.
 	ScaleDownDelay time.Duration
@@ -96,8 +107,62 @@ func NewKpaScalingContext() *KpaScalingContext {
 		ActivationScale:     1,                // Initial scaling factor upon activation
 		PanicThreshold:      2.0,              // Panic threshold set at 200% to trigger rapid scaling
 		StableWindow:        60 * time.Second, // Time window to stabilize before altering scale
+		PanicWindow:         10 * time.Second, // Time window to stabilize before altering scale
 		ScaleDownDelay:      30 * time.Minute, // Delay before scaling down to avoid flapping
 	}
+}
+
+// NewKpaScalingContextByPa initializes KpaScalingContext by passed-in PodAutoscaler description
+func NewKpaScalingContextByPa(pa *autoscalingv1alpha1.PodAutoscaler) (*KpaScalingContext, error) {
+	res := NewKpaScalingContext()
+	err := res.UpdateByPaTypes(pa)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (k *KpaScalingContext) UpdateByPaTypes(pa *autoscalingv1alpha1.PodAutoscaler) error {
+	err := k.BaseScalingContext.UpdateByPaTypes(pa)
+	if err != nil {
+		return err
+	}
+	for key, value := range pa.Labels {
+		switch key {
+		case targetBurstCapacityLabel:
+			v, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				return err
+			}
+			k.TargetBurstCapacity = v
+		case activationScaleLabel:
+			v, err := strconv.ParseInt(value, 10, 32)
+			if err != nil {
+				return err
+			}
+			k.ActivationScale = int32(v)
+		case panicThresholdLabel:
+			v, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				return err
+			}
+			k.PanicThreshold = v
+		case stableWindowLabel:
+			v, err := time.ParseDuration(value)
+			if err != nil {
+				return err
+			}
+			k.StableWindow = v
+		case scaleDownDelayLabel:
+			v, err := time.ParseDuration(value)
+			if err != nil {
+				return err
+			}
+			k.ScaleDownDelay = v
+		}
+	}
+
+	return nil
 }
 
 type KpaAutoscaler struct {
@@ -116,16 +181,21 @@ type KpaAutoscaler struct {
 var _ Scaler = (*KpaAutoscaler)(nil)
 
 // NewKpaAutoscaler Initialize KpaAutoscaler: Referenced from `knative/pkg/autoscaler/scaling/autoscaler.go newAutoscaler`
-func NewKpaAutoscaler(readyPodsCount int, spec *KpaScalingContext) (*KpaAutoscaler, error) {
-	if spec == nil {
-		return nil, errors.New("spec cannot be nil")
+func NewKpaAutoscaler(readyPodsCount int, pa *autoscalingv1alpha1.PodAutoscaler) (*KpaAutoscaler, error) {
+	spec, err := NewKpaScalingContextByPa(pa)
+	if err != nil {
+		return nil, err
 	}
 
 	// Create a new delay window based on the ScaleDownDelay specified in the spec
-	if spec.ScaleDownDelay <= 0 {
+	if spec.ScaleDownDelay < 0 {
 		return nil, errors.New("ScaleDownDelay must be positive")
 	}
-	delayWindow := aggregation.NewTimeWindow(spec.ScaleDownDelay, 1*time.Second)
+	var delayWindow *aggregation.TimeWindow
+	// If specify ScaleDownDelay, KpaAutoscaler.delayWindow will be initialized
+	if spec.ScaleDownDelay > 0 {
+		delayWindow = aggregation.NewTimeWindow(spec.ScaleDownDelay, 1*time.Second)
+	}
 
 	// As KNative stated:
 	//   We always start in the panic mode, if the deployment is scaled up over 1 pod.
@@ -143,7 +213,8 @@ func NewKpaAutoscaler(readyPodsCount int, spec *KpaScalingContext) (*KpaAutoscal
 
 	// TODO missing MetricClient
 	metricsFetcher := &metrics.RestMetricsFetcher{}
-	metricsClient := metrics.NewKPAMetricsClient(metricsFetcher)
+	metricsClient := metrics.NewKPAMetricsClient(metricsFetcher, spec.StableWindow, spec.PanicWindow)
+
 	scalingAlgorithm := algorithm.KpaScalingAlgorithm{}
 
 	return &KpaAutoscaler{
@@ -202,6 +273,14 @@ func (k *KpaAutoscaler) Scale(originalReadyPodsCount int, metricKey metrics.Name
 
 	isOverPanicThreshold := dppc/readyPodsCount >= spec.PanicThreshold
 
+	klog.V(4).InfoS("--- KPA Details", "readyPodsCount", readyPodsCount,
+		"MaxScaleUpRate", spec.MaxScaleUpRate, "MaxScaleDownRate", spec.MaxScaleDownRate,
+		"TargetValue", spec.TargetValue, "PanicThreshold", spec.PanicThreshold,
+		"StableWindow", spec.StableWindow, "PanicWindow", spec.PanicWindow, "ScaleDownDelay", spec.ScaleDownDelay,
+		"dppc", dppc, "dspc", dspc, "desiredStablePodCount", desiredStablePodCount,
+		"PanicThreshold", spec.PanicThreshold, "isOverPanicThreshold", isOverPanicThreshold,
+	)
+
 	if k.panicTime.IsZero() && isOverPanicThreshold {
 		// Begin panicking when we cross the threshold in the panic window.
 		klog.InfoS("Begin panicking")
@@ -221,10 +300,10 @@ func (k *KpaAutoscaler) Scale(originalReadyPodsCount int, metricKey metrics.Name
 		// In some edgecases stable window metric might be larger
 		// than panic one. And we should provision for stable as for panic,
 		// so pick the larger of the two.
+		klog.InfoS("Operating in panic mode.", "desiredPodCount", desiredPodCount, "desiredPanicPodCount", desiredPanicPodCount)
 		if desiredPodCount < desiredPanicPodCount {
 			desiredPodCount = desiredPanicPodCount
 		}
-		klog.InfoS("Operating in panic mode.")
 		// We do not scale down while in panic mode. Only increases will be applied.
 		if desiredPodCount > k.maxPanicPods {
 			klog.InfoS("Increasing pods count.", "originalPodCount", originalReadyPodsCount, "desiredPodCount", desiredPodCount)
@@ -243,7 +322,9 @@ func (k *KpaAutoscaler) Scale(originalReadyPodsCount int, metricKey metrics.Name
 	// not the same in the case where two Scale()s happen in the same time
 	// interval (because the largest will be picked rather than the most recent
 	// in that case).
+	klog.V(4).InfoS("DelayWindow details", "delayWindow", k.delayWindow.String())
 	if k.delayWindow != nil {
+		// the actual desiredPodCount will be recorded, but return the max replicas during passed delayWindow
 		k.delayWindow.Record(now, float64(desiredPodCount))
 		delayedPodCount, err := k.delayWindow.Max()
 		if err != nil {
@@ -298,18 +379,39 @@ func (k *KpaAutoscaler) UpdateScaleTargetMetrics(ctx context.Context, metricKey 
 	return nil
 }
 
+func (k *KpaAutoscaler) UpdateSourceMetrics(ctx context.Context, metricKey metrics.NamespaceNameMetric, source autoscalingv1alpha1.MetricSource, now time.Time) error {
+	metricValue, err := k.metricClient.GetMetricFromSource(ctx, source)
+	if err != nil {
+		return err
+	}
+
+	return k.metricClient.UpdateMetrics(now, metricKey, metricValue)
+}
+
 func (k *KpaAutoscaler) UpdateScalingContext(pa autoscalingv1alpha1.PodAutoscaler) error {
 	k.specMux.Lock()
 	defer k.specMux.Unlock()
-
-	targetValue, err := strconv.ParseFloat(pa.Spec.TargetValue, 64)
+	// update context and check configuration restraint.
+	// N.B. for now, we forbid update the config related to the stateful attribute, like window length.
+	updatedSpec, err := NewKpaScalingContextByPa(&pa)
 	if err != nil {
-		klog.ErrorS(err, "Failed to parse target value", "targetValue", pa.Spec.TargetValue)
 		return err
 	}
-	k.scalingContext.TargetValue = targetValue
-	k.scalingContext.ScalingMetric = pa.Spec.TargetMetric
-
+	// check kpa spec: panic window, stable window and delaywindow
+	rawSpec := k.scalingContext
+	if updatedSpec.PanicWindow != rawSpec.PanicWindow {
+		klog.Warningf("For KPA, updating the PanicWindow (%v) is not allowed. Keep the original value (%v)", updatedSpec.PanicWindow, rawSpec.PanicWindow)
+		updatedSpec.PanicWindow = rawSpec.PanicWindow
+	}
+	if updatedSpec.StableWindow != rawSpec.StableWindow {
+		klog.Warningf("For KPA, updating the StableWindow (%v) is not allowed. Keep the original value (%v)", updatedSpec.StableWindow, rawSpec.StableWindow)
+		updatedSpec.StableWindow = rawSpec.StableWindow
+	}
+	if updatedSpec.ScaleDownDelay != rawSpec.ScaleDownDelay {
+		klog.Warningf("For KPA, updating the ScaleDownDelay (%v) is not allowed. Keep the original value (%v)", updatedSpec.ScaleDownDelay, rawSpec.ScaleDownDelay)
+		updatedSpec.ScaleDownDelay = rawSpec.ScaleDownDelay
+	}
+	k.scalingContext = updatedSpec
 	return nil
 }
 

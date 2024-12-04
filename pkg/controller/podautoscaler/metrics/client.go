@@ -18,7 +18,6 @@ package metrics
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
@@ -26,11 +25,14 @@ import (
 	"github.com/aibrix/aibrix/pkg/controller/podautoscaler/aggregation"
 	"k8s.io/klog/v2"
 
+	autoscalingv1alpha1 "github.com/aibrix/aibrix/api/autoscaling/v1alpha1"
+
 	"time"
 )
 
 const (
 	metricServerDefaultMetricWindow = time.Minute
+	paGranularity                   = time.Second
 )
 
 type KPAMetricsClient struct {
@@ -52,46 +54,40 @@ type KPAMetricsClient struct {
 	// are collected and processed within the sliding window.
 	granularity time.Duration
 	// the difference between stable and panic metrics is the time window range
-	panicWindowDict  map[NamespaceNameMetric]*aggregation.TimeWindow
-	stableWindowDict map[NamespaceNameMetric]*aggregation.TimeWindow
+	panicWindow  *aggregation.TimeWindow
+	stableWindow *aggregation.TimeWindow
 }
 
 var _ MetricClient = (*KPAMetricsClient)(nil)
 
 // NewKPAMetricsClient initializes and returns a KPAMetricsClient with specified durations.
-func NewKPAMetricsClient(fetcher MetricFetcher) *KPAMetricsClient {
+func NewKPAMetricsClient(fetcher MetricFetcher, stableDuration time.Duration, panicDuration time.Duration) *KPAMetricsClient {
 	client := &KPAMetricsClient{
-		fetcher:          fetcher,
-		stableDuration:   60 * time.Second,
-		panicDuration:    10 * time.Second,
-		granularity:      time.Second,
-		panicWindowDict:  make(map[NamespaceNameMetric]*aggregation.TimeWindow),
-		stableWindowDict: make(map[NamespaceNameMetric]*aggregation.TimeWindow),
+		fetcher:        fetcher,
+		stableDuration: stableDuration,
+		panicDuration:  panicDuration,
+		granularity:    paGranularity,
+		panicWindow:    aggregation.NewTimeWindow(panicDuration, paGranularity),
+		stableWindow:   aggregation.NewTimeWindow(stableDuration, paGranularity),
 	}
 	return client
 }
 
-func (c *KPAMetricsClient) UpdateMetricIntoWindow(metricKey NamespaceNameMetric, now time.Time, metricValue float64) error {
-	// Add to panic and stable windows; create a new window if not present in the map
-	// Ensure that panicWindowDict and stableWindowDict maps are checked and updated
-	updateWindow := func(windowDict map[NamespaceNameMetric]*aggregation.TimeWindow, duration time.Duration) {
-		window, exists := windowDict[metricKey]
-		if !exists {
-			// Create a new TimeWindow if it does not exist
-			windowDict[metricKey] = aggregation.NewTimeWindow(duration, c.granularity)
-			window = windowDict[metricKey]
-		}
-		// Record the maximum metric value in the TimeWindow
-		window.Record(now, metricValue)
-	}
-
-	// Update panic and stable windows
-	updateWindow(c.panicWindowDict, c.panicDuration)
-	updateWindow(c.stableWindowDict, c.stableDuration)
+func (c *KPAMetricsClient) UpdateMetricIntoWindow(now time.Time, metricValue float64) error {
+	c.panicWindow.Record(now, metricValue)
+	c.stableWindow.Record(now, metricValue)
 	return nil
 }
 
 func (c *KPAMetricsClient) UpdatePodListMetric(metricValues []float64, metricKey NamespaceNameMetric, now time.Time) error {
+	return c.UpdateMetrics(now, metricKey, metricValues...)
+}
+
+func (c *KPAMetricsClient) UpdateMetrics(now time.Time, metricKey NamespaceNameMetric, metricValues ...float64) error {
+	if len(metricValues) == 0 {
+		return nil
+	}
+
 	// Calculate the total value from the retrieved metrics
 	var sumMetricValue float64
 	for _, metricValue := range metricValues {
@@ -102,11 +98,11 @@ func (c *KPAMetricsClient) UpdatePodListMetric(metricValues []float64, metricKey
 	defer c.collectionsMutex.Unlock()
 
 	// Update metrics into the window for tracking
-	err := c.UpdateMetricIntoWindow(metricKey, now, sumMetricValue)
+	err := c.UpdateMetricIntoWindow(now, sumMetricValue)
 	if err != nil {
 		return err
 	}
-	klog.InfoS("Update pod list metrics", "metricKey", metricKey, "podListNum", len(metricValues), "timestamp", now, "metricValue", sumMetricValue)
+	klog.InfoS("Update pod list metrics", "metricKey", metricKey, "valueNum", len(metricValues), "timestamp", now, "metricValue", sumMetricValue)
 	return nil
 }
 
@@ -115,29 +111,19 @@ func (c *KPAMetricsClient) StableAndPanicMetrics(
 	c.collectionsMutex.RLock()
 	defer c.collectionsMutex.RUnlock()
 
-	panicWindow, exists := c.panicWindowDict[metricKey]
-	if !exists {
-		return -1, -1, fmt.Errorf("panic metrics %s not found", metricKey)
-	}
-
-	panicValue, err := panicWindow.Avg()
+	panicValue, err := c.panicWindow.Avg()
 	if err != nil {
 		return -1, -1, err
 	}
 
-	klog.InfoS("Get panicWindow", "metricKey", metricKey, "panicValue", panicValue, "panicWindow", panicWindow)
+	klog.InfoS("Get panicWindow", "metricKey", metricKey, "panicValue", panicValue, "panicWindow", c.panicWindow)
 
-	stableWindow, exists := c.stableWindowDict[metricKey]
-	if !exists {
-		return -1, -1, fmt.Errorf("stable metrics %s not found", metricKey)
-	}
-	stableValue, err := stableWindow.Avg()
+	stableValue, err := c.stableWindow.Avg()
 	if err != nil {
 		return -1, -1, err
 	}
 
-	klog.InfoS("Get stableWindow", "metricKey", metricKey, "stableValue", stableValue, "stableWindow", stableWindow)
-
+	klog.Infof("Get stableWindow: metricKey=%s, stableValue=%.2f, stableWindow=%v", metricKey, stableValue, c.stableWindow)
 	return stableValue, panicValue, nil
 }
 
@@ -147,6 +133,11 @@ func (c *KPAMetricsClient) GetPodContainerMetric(ctx context.Context, pod corev1
 
 func (c *KPAMetricsClient) GetMetricsFromPods(ctx context.Context, pods []corev1.Pod, metricName string, metricPort int) ([]float64, error) {
 	return GetMetricsFromPods(ctx, c.fetcher, pods, metricName, metricPort)
+}
+
+func (c *KPAMetricsClient) GetMetricFromSource(ctx context.Context, source autoscalingv1alpha1.MetricSource) (float64, error) {
+	// Retrieve metrics from a list of pods
+	return c.fetcher.FetchMetric(ctx, source.Endpoint, source.Path, source.Name)
 }
 
 type APAMetricsClient struct {
@@ -165,42 +156,32 @@ type APAMetricsClient struct {
 	// are collected and processed within the sliding window.
 	granularity time.Duration
 	// stable time window
-	windowDict map[NamespaceNameMetric]*aggregation.TimeWindow
+	window *aggregation.TimeWindow
 }
 
 var _ MetricClient = (*APAMetricsClient)(nil)
 
 // NewAPAMetricsClient initializes and returns a KPAMetricsClient with specified durations.
-func NewAPAMetricsClient(fetcher MetricFetcher) *APAMetricsClient {
+func NewAPAMetricsClient(fetcher MetricFetcher, duration time.Duration) *APAMetricsClient {
 	client := &APAMetricsClient{
 		fetcher:     fetcher,
-		duration:    60 * time.Second,
-		granularity: time.Second,
-		windowDict:  make(map[NamespaceNameMetric]*aggregation.TimeWindow),
+		duration:    duration,
+		granularity: paGranularity,
+		window:      aggregation.NewTimeWindow(duration, paGranularity),
 	}
 	return client
 }
 
-func (c *APAMetricsClient) UpdateMetricIntoWindow(metricKey NamespaceNameMetric, now time.Time, metricValue float64) error {
-	// Add to metric window; create a new window if not present in the map
-	// Ensure that windowDict maps are checked and updated
-	updateWindow := func(windowDict map[NamespaceNameMetric]*aggregation.TimeWindow, duration time.Duration) {
-		window, exists := windowDict[metricKey]
-		if !exists {
-			// Create a new TimeWindow if it does not exist
-			windowDict[metricKey] = aggregation.NewTimeWindow(duration, c.granularity)
-			window = windowDict[metricKey]
-		}
-		// Record the maximum metric value in the TimeWindow
-		window.Record(now, metricValue)
-	}
-
-	// Update metrics windows
-	updateWindow(c.windowDict, c.duration)
+func (c *APAMetricsClient) UpdateMetricIntoWindow(now time.Time, metricValue float64) error {
+	c.window.Record(now, metricValue)
 	return nil
 }
 
 func (c *APAMetricsClient) UpdatePodListMetric(metricValues []float64, metricKey NamespaceNameMetric, now time.Time) error {
+	return c.UpdateMetrics(now, metricKey, metricValues...)
+}
+
+func (c *APAMetricsClient) UpdateMetrics(now time.Time, metricKey NamespaceNameMetric, metricValues ...float64) error {
 	// Calculate the total value from the retrieved metrics
 	var sumMetricValue float64
 	for _, metricValue := range metricValues {
@@ -211,11 +192,11 @@ func (c *APAMetricsClient) UpdatePodListMetric(metricValues []float64, metricKey
 	defer c.collectionsMutex.Unlock()
 
 	// Update metrics into the window for tracking
-	err := c.UpdateMetricIntoWindow(metricKey, now, sumMetricValue)
+	err := c.UpdateMetricIntoWindow(now, sumMetricValue)
 	if err != nil {
 		return err
 	}
-	klog.InfoS("Update pod list metrics", "metricKey", metricKey, "podListNum", len(metricValues), "timestamp", now, "metricValue", sumMetricValue)
+	klog.InfoS("Update pod list metrics", "metricKey", metricKey, "valueNum", len(metricValues), "timestamp", now, "metricValue", sumMetricValue)
 	return nil
 }
 
@@ -224,12 +205,7 @@ func (c *APAMetricsClient) GetMetricValue(
 	c.collectionsMutex.RLock()
 	defer c.collectionsMutex.RUnlock()
 
-	window, exists := c.windowDict[metricKey]
-	if !exists {
-		return -1, fmt.Errorf("metrics %s not found", metricKey)
-	}
-
-	metricValue, err := window.Avg()
+	metricValue, err := c.window.Avg()
 	if err != nil {
 		return -1, err
 	}
@@ -243,4 +219,8 @@ func (c *APAMetricsClient) GetPodContainerMetric(ctx context.Context, pod corev1
 
 func (c *APAMetricsClient) GetMetricsFromPods(ctx context.Context, pods []corev1.Pod, metricName string, metricPort int) ([]float64, error) {
 	return GetMetricsFromPods(ctx, c.fetcher, pods, metricName, metricPort)
+}
+
+func (c *APAMetricsClient) GetMetricFromSource(ctx context.Context, source autoscalingv1alpha1.MetricSource) (float64, error) {
+	return c.fetcher.FetchMetric(ctx, source.Endpoint, source.Path, source.Name)
 }

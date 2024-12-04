@@ -3,18 +3,62 @@ name: Installation Tests
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'config/**'
+      - 'pkg/**'
+      - 'cmd/**'
+      - 'python/**' 
+      - 'Makefile'
+      - 'go.mod'
+      - 'go.sum'
   pull_request:
     branches: [ "main" ]
+    paths:
+      - 'config/**'
+      - 'pkg/**'
+      - 'cmd/**'
+      - 'python/**' 
+      - 'Makefile'
+      - 'go.mod'
+      - 'go.sum'
 
 jobs:
-  installation-test:
+  build-images:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [controller-manager, plugins, runtime, users]
     steps:
       - name: Check out code
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+
+      - name: Build ${{ matrix.image }}
+        run: |
+          GIT_COMMIT_HASH=${{ github.sha }} make docker-build-${{ matrix.image }}
+
+      - name: Save image
+        run: |
+          docker save aibrix/${{ matrix.image }}:${{ github.sha }} > ${{ matrix.image }}.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.image }}-image
+          path: ${{ matrix.image }}.tar
+          retention-days: 1
+
+  installation-test:
+    needs: build-images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Download all image artifacts
+        uses: actions/download-artifact@v3
 
       - name: Install kind
         run: |
@@ -34,17 +78,20 @@ jobs:
           kind create cluster --name installation-test
           kubectl cluster-info --context kind-installation-test
 
-      - name: Build container images
-        run: |
-          GIT_COMMIT_HASH=${{ github.sha }} make docker-build-all
-
       - name: Load image into Kind
         run: |
-          kind load docker-image aibrix/controller-manager:${{ github.sha }} --name installation-test
-          kind load docker-image aibrix/plugins:${{ github.sha }} --name installation-test
-          kind load docker-image aibrix/runtime:${{ github.sha }} --name installation-test
-          kind load docker-image aibrix/users:${{ github.sha }} --name installation-test
-
+          for image in controller-manager plugins runtime users; do
+            docker load < ${image}-image/${image}.tar
+          
+            # Retag the image
+            # This is for application integration, since it is not that easy to override all commits in manifest
+            # It is better to use nightly to represent the latest image
+            docker tag aibrix/${image}:${{ github.sha }} aibrix/${image}:nightly
+          
+            kind load docker-image aibrix/${image}:${{ github.sha }} --name installation-test
+            kind load docker-image aibrix/${image}:nightly --name installation-test
+          done
+          
       - name: Deploy controller with the built image
         run: |
           kubectl create -k config/dependency
@@ -53,6 +100,13 @@ jobs:
           cd config/gateway && kustomize edit set image plugins=aibrix/plugins:${{ github.sha }} && kustomize edit set image users=aibrix/users:${{ github.sha }}
           cd ${{ github.workspace }}
           kubectl create -k config/default
+
+      - name: Deploy Workload
+        run: |
+          cd development/app
+          docker build -t aibrix/vllm-mock:nightly -f Dockerfile .
+          kind load docker-image aibrix/vllm-mock:nightly --name installation-test
+          kubectl apply -f deployment.yaml
 
       - name: Check pod status
         run: |

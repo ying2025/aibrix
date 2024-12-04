@@ -18,56 +18,61 @@ package routingalgorithms
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"math/rand"
 
 	"github.com/aibrix/aibrix/pkg/cache"
-	ratelimiter "github.com/aibrix/aibrix/pkg/plugins/gateway/ratelimiter"
+	"github.com/aibrix/aibrix/pkg/metrics"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 )
 
 type leastRequestRouter struct {
-	ratelimiter ratelimiter.RateLimiter
-	cache       *cache.Cache
+	cache *cache.Cache
 }
 
-func NewLeastRequestRouter(ratelimiter ratelimiter.RateLimiter) Router {
+func NewLeastRequestRouter() Router {
 	cache, err := cache.GetCache()
 	if err != nil {
 		panic(err)
 	}
 
 	return leastRequestRouter{
-		ratelimiter: ratelimiter,
-		cache:       cache,
+		cache: cache,
 	}
 }
 
-func (r leastRequestRouter) Route(ctx context.Context, pods map[string]*v1.Pod) (string, error) {
+func (r leastRequestRouter) Route(ctx context.Context, pods map[string]*v1.Pod, model string) (string, error) {
 	var targetPodIP string
 	minCount := math.MaxFloat64
+
+	if len(pods) == 0 {
+		return "", fmt.Errorf("no pods to forward request")
+	}
 
 	for _, pod := range pods {
 		if pod.Status.PodIP == "" {
 			continue
 		}
 
-		runningReq, err := r.cache.GetPodMetric(pod.Name, num_requests_running)
+		runningReq, err := r.cache.GetPodMetric(pod.Name, metrics.NumRequestsRunning)
 		if err != nil {
 			klog.Error(err)
 			continue
 		}
-		waitingReq, err := r.cache.GetPodMetric(pod.Name, num_requests_waiting)
+		waitingReq, err := r.cache.GetPodMetric(pod.Name, metrics.NumRequestsWaiting)
 		if err != nil {
 			klog.Error(err)
 			continue
 		}
-		swappedReq, err := r.cache.GetPodMetric(pod.Name, num_requests_swapped)
+		swappedReq, err := r.cache.GetPodMetric(pod.Name, metrics.NumRequestsSwapped)
 		if err != nil {
 			klog.Error(err)
 			continue
 		}
-		totalReq := runningReq + waitingReq + swappedReq
+
+		totalReq := runningReq.GetSimpleValue() + waitingReq.GetSimpleValue() + swappedReq.GetSimpleValue()
 		klog.V(4).Infof("pod: %v, podIP: %v, runningReq: %v, waitingReq: %v, swappedReq: %v, totalReq: %v",
 			pod.Name, pod.Status.PodIP, runningReq, waitingReq, swappedReq, totalReq)
 
@@ -77,5 +82,27 @@ func (r leastRequestRouter) Route(ctx context.Context, pods map[string]*v1.Pod) 
 		}
 	}
 
-	return targetPodIP + ":" + podPort, nil
+	// Use fallback if no valid metrics
+	if targetPodIP == "" {
+		klog.Warning("No pods with valid metrics found; selecting a pod randomly as fallback")
+		var err error
+		targetPodIP, err = selectRandomPod(pods, rand.Intn)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if targetPodIP == "" {
+		return "", fmt.Errorf("no pods to forward request")
+	}
+
+	return targetPodIP + ":" + podMetricPort, nil
+}
+
+func (r *leastRequestRouter) SubscribedMetrics() []string {
+	return []string{
+		metrics.NumRequestsRunning,
+		metrics.NumRequestsWaiting,
+		metrics.NumRequestsSwapped,
+	}
 }

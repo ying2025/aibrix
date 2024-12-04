@@ -72,38 +72,11 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 		Scheme:         mgr.GetScheme(),
 		EventRecorder:  mgr.GetEventRecorderFor("PodAutoscaler"),
 		Mapper:         mgr.GetRESTMapper(),
-		resyncInterval: 30 * time.Second, // TODO: this should be override by an environment variable
+		resyncInterval: 10 * time.Second, // TODO: this should be override by an environment variable
 		eventCh:        make(chan event.GenericEvent),
+		AutoscalerMap:  make(map[metrics.NamespaceNameMetric]scaler.Scaler),
 	}
 
-	// initialize all kinds of autoscalers, such as KPA and APA.
-	kpaScaler, err := scaler.NewKpaAutoscaler(
-		0,
-		// TODO: The following parameters are specific to KPA.
-		//  We use default values based on KNative settings to quickly establish a fully functional workflow.
-		// refer to https://github.com/knative/serving/blob/b6e6baa6dc6697d0e7ddb3a12925f329a1f5064c/config/core/configmaps/autoscaler.yaml#L27
-		scaler.NewKpaScalingContext(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	klog.InfoS("Initialized CustomPA: KPA autoscaler successfully")
-
-	apaScaler, err := scaler.NewApaAutoscaler(
-		0,
-		// TODO: The following parameters are specific to APA.
-		//  Adjust these parameters based on your requirements for APA.
-		scaler.NewApaScalingContext(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	klog.InfoS("Initialized CustomPA: APA autoscaler successfully")
-
-	reconciler.AutoscalerMap = map[autoscalingv1alpha1.ScalingStrategyType]scaler.Scaler{
-		autoscalingv1alpha1.KPA: kpaScaler,
-		autoscalingv1alpha1.APA: apaScaler,
-	}
 	return reconciler, nil
 }
 
@@ -123,7 +96,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		WatchesRawSource(src, &handler.EnqueueRequestForObject{}).
 		Complete(r)
 
-	klog.InfoS("Added AIBricks pod-autoscaler-controller successfully")
+	klog.InfoS("Added AIBrix pod-autoscaler-controller successfully")
 
 	errChan := make(chan error)
 	go reconciler.Run(context.Background(), errChan)
@@ -146,7 +119,7 @@ type PodAutoscalerReconciler struct {
 	Scheme         *runtime.Scheme
 	EventRecorder  record.EventRecorder
 	Mapper         apimeta.RESTMapper
-	AutoscalerMap  map[autoscalingv1alpha1.ScalingStrategyType]scaler.Scaler
+	AutoscalerMap  map[metrics.NamespaceNameMetric]scaler.Scaler // AutoscalerMap maps each NamespaceNameMetric to its corresponding scaler instance.
 	resyncInterval time.Duration
 	eventCh        chan event.GenericEvent
 }
@@ -210,7 +183,7 @@ func (r *PodAutoscalerReconciler) Run(ctx context.Context, errChan chan<- error)
 	for {
 		select {
 		case <-ticker.C:
-			klog.Info("enqueue all autoscalers")
+			klog.V(4).Info("enqueue all autoscalers")
 			// periodically sync all autoscaling objects
 			if err := r.enqueuePodAutoscalers(ctx); err != nil {
 				klog.ErrorS(err, "Failed to enqueue pod autoscalers")
@@ -309,13 +282,14 @@ func (r *PodAutoscalerReconciler) reconcileHPA(ctx context.Context, pa autoscali
 // while allowing for customization in the specific stages mentioned above.
 func (r *PodAutoscalerReconciler) reconcileCustomPA(ctx context.Context, pa autoscalingv1alpha1.PodAutoscaler) (ctrl.Result, error) {
 	paStatusOriginal := pa.Status.DeepCopy()
+	paType := pa.Spec.ScalingStrategy
 	scaleReference := fmt.Sprintf("%s/%s/%s", pa.Spec.ScaleTargetRef.Kind, pa.Namespace, pa.Spec.ScaleTargetRef.Name)
 
 	targetGV, err := schema.ParseGroupVersion(pa.Spec.ScaleTargetRef.APIVersion)
 	if err != nil {
 		r.EventRecorder.Event(&pa, corev1.EventTypeWarning, "FailedGetScale", err.Error())
 		// TODO: convert conditionType to type instead of using string
-		setCondition(&pa, "AbleToScale", metav1.ConditionFalse, "FailedGetScale", "the PodAutoscaler controller was unable to get the target's current scale: %v", err)
+		setCondition(&pa, "AbleToScale", metav1.ConditionFalse, "FailedGetScale", "the %s controller was unable to get the target's current scale: %v", paType, err)
 		if err := r.updateStatusIfNeeded(ctx, paStatusOriginal, &pa); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -329,7 +303,7 @@ func (r *PodAutoscalerReconciler) reconcileCustomPA(ctx context.Context, pa auto
 	mappings, err := r.Mapper.RESTMappings(targetGK)
 	if err != nil {
 		r.EventRecorder.Event(&pa, corev1.EventTypeWarning, "FailedGetScale", err.Error())
-		setCondition(&pa, "AbleToScale", metav1.ConditionFalse, "FailedGetScale", "the HPA controller was unable to get the target's current scale: %v", err)
+		setCondition(&pa, "AbleToScale", metav1.ConditionFalse, "FailedGetScale", "the %s controller was unable to get the target's current scale: %v", paType, err)
 		if err := r.updateStatusIfNeeded(ctx, paStatusOriginal, &pa); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -340,14 +314,14 @@ func (r *PodAutoscalerReconciler) reconcileCustomPA(ctx context.Context, pa auto
 	scale, targetGR, err := r.scaleForResourceMappings(ctx, pa.Namespace, pa.Spec.ScaleTargetRef.Name, mappings)
 	if err != nil {
 		r.EventRecorder.Event(&pa, corev1.EventTypeWarning, "FailedGetScale", err.Error())
-		setCondition(&pa, "AbleToScale", metav1.ConditionFalse, "FailedGetScale", "the HPA controller was unable to get the target's current scale: %v", err)
+		setCondition(&pa, "AbleToScale", metav1.ConditionFalse, "FailedGetScale", "the %s controller was unable to get the target's current scale: %v", paType, err)
 		if err := r.updateStatusIfNeeded(ctx, paStatusOriginal, &pa); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to query scale subresource for %s: %v", scaleReference, err)
 	}
 
-	setCondition(&pa, "AbleToScale", metav1.ConditionTrue, "SucceededGetScale", "the HPA controller was able to get the target's current scale")
+	setCondition(&pa, "AbleToScale", metav1.ConditionTrue, "SucceededGetScale", "the %s controller was able to get the target's current scale", paType)
 
 	// Update the scale required metrics periodically
 	err = r.updateMetricsForScale(ctx, pa, scale)
@@ -441,7 +415,7 @@ func (r *PodAutoscalerReconciler) reconcileCustomPA(ctx context.Context, pa auto
 	if rescale {
 		if err := r.updateScale(ctx, pa.Namespace, targetGR, scale, desiredReplicas); err != nil {
 			r.EventRecorder.Eventf(&pa, corev1.EventTypeWarning, "FailedRescale", "New size: %d; reason: %s; error: %v", desiredReplicas, rescaleReason, err)
-			setCondition(&pa, "AbleToScale", metav1.ConditionFalse, "FailedUpdateScale", "the HPA controller was unable to update the target scale: %v", err)
+			setCondition(&pa, "AbleToScale", metav1.ConditionFalse, "FailedUpdateScale", "the %s controller was unable to update the target scale: %v", paType, err)
 			r.setCurrentReplicasAndMetricsInStatus(&pa, currentReplicas)
 			if err := r.updateStatusIfNeeded(ctx, paStatusOriginal, &pa); err != nil {
 				utilruntime.HandleError(err)
@@ -529,19 +503,19 @@ func (r *PodAutoscalerReconciler) updateScale(ctx context.Context, namespace str
 	return nil
 }
 
-// setCondition sets the specific condition type on the given HPA to the specified value with the given reason
+// setCondition sets the specific condition type on the given PA to the specified value with the given reason
 // and message.  The message and args are treated like a format string.  The condition will be added if it is
 // not present.
-func setCondition(hpa *autoscalingv1alpha1.PodAutoscaler, conditionType string, status metav1.ConditionStatus, reason, message string, args ...interface{}) {
-	hpa.Status.Conditions = podutils.SetConditionInList(hpa.Status.Conditions, conditionType, status, reason, message, args...)
+func setCondition(pa *autoscalingv1alpha1.PodAutoscaler, conditionType string, status metav1.ConditionStatus, reason, message string, args ...interface{}) {
+	pa.Status.Conditions = podutils.SetConditionInList(pa.Status.Conditions, conditionType, status, reason, message, args...)
 }
 
-// setCurrentReplicasAndMetricsInStatus sets the current replica count and metrics in the status of the HPA.
+// setCurrentReplicasAndMetricsInStatus sets the current replica count and metrics in the status of the PA.
 func (r *PodAutoscalerReconciler) setCurrentReplicasAndMetricsInStatus(pa *autoscalingv1alpha1.PodAutoscaler, currentReplicas int32) {
 	r.setStatus(pa, currentReplicas, pa.Status.DesiredScale, false)
 }
 
-// setStatus recreates the status of the given HPA, updating the current and
+// setStatus recreates the status of the given PA, updating the current and
 // desired replicas, as well as the metric statuses
 func (r *PodAutoscalerReconciler) setStatus(pa *autoscalingv1alpha1.PodAutoscaler, currentReplicas, desiredReplicas int32, rescale bool) {
 	pa.Status = autoscalingv1alpha1.PodAutoscalerStatus{
@@ -565,7 +539,7 @@ func (r *PodAutoscalerReconciler) updateStatusIfNeeded(ctx context.Context, oldS
 	return r.updateStatus(ctx, newPA)
 }
 
-// updateStatus actually does the update request for the status of the given HPA
+// updateStatus actually does the update request for the status of the given PA
 func (r *PodAutoscalerReconciler) updateStatus(ctx context.Context, pa *autoscalingv1alpha1.PodAutoscaler) error {
 	if err := r.Status().Update(ctx, pa); err != nil {
 		r.EventRecorder.Event(pa, corev1.EventTypeWarning, "FailedUpdateStatus", err.Error())
@@ -580,7 +554,7 @@ func (r *PodAutoscalerReconciler) updateStatus(ctx context.Context, pa *autoscal
 // returning the maximum of the computed replica counts, a description of the associated metric, and the statuses of
 // all metrics computed.
 // It may return both valid metricDesiredReplicas and an error,
-// when some metrics still work and HPA should perform scaling based on them.
+// when some metrics still work and PA should perform scaling based on them.
 // If PodAutoscaler cannot do anything due to error, it returns -1 in metricDesiredReplicas as a failure signal.
 func (r *PodAutoscalerReconciler) computeReplicasForMetrics(ctx context.Context, pa autoscalingv1alpha1.PodAutoscaler, scale *unstructured.Unstructured) (replicas int32, relatedMetrics string, timestamp time.Time, err error) {
 	logger := klog.FromContext(ctx)
@@ -599,16 +573,23 @@ func (r *PodAutoscalerReconciler) computeReplicasForMetrics(ctx context.Context,
 		return 0, "", currentTimestamp, fmt.Errorf("error getting ready pods count: %w", err)
 	}
 
+	// TODO UpdateScalingContext (in updateScalerSpec) is duplicate invoked in computeReplicasForMetrics and updateMetricsForScale
 	err = r.updateScalerSpec(ctx, pa)
 	if err != nil {
+		klog.ErrorS(err, "Failed to update scaler spec from pa_types")
 		return 0, "", currentTimestamp, fmt.Errorf("error update scaler spec: %w", err)
 	}
 
 	logger.V(4).Info("Obtained selector and get ReadyPodsCount", "selector", labelsSelector, "originalReadyPodsCount", originalReadyPodsCount)
-	metricKey := metrics.NewNamespaceNameMetric(pa.Namespace, pa.Spec.ScaleTargetRef.Name, pa.Spec.TargetMetric)
+	var metricKey metrics.NamespaceNameMetric
+	if len(pa.Spec.MetricsSources) > 0 {
+		metricKey = metrics.NewNamespaceNameMetric(pa.Namespace, pa.Spec.ScaleTargetRef.Name, pa.Spec.MetricsSources[0].Name)
+	} else {
+		metricKey = metrics.NewNamespaceNameMetric(pa.Namespace, pa.Spec.ScaleTargetRef.Name, pa.Spec.TargetMetric)
+	}
 
 	// Calculate the desired number of pods using the autoscaler logic.
-	autoScaler, ok := r.AutoscalerMap[pa.Spec.ScalingStrategy]
+	autoScaler, ok := r.AutoscalerMap[metricKey]
 	if !ok {
 		return 0, "", currentTimestamp, fmt.Errorf("unsupported scaling strategy: %s", pa.Spec.ScalingStrategy)
 	}
@@ -623,10 +604,10 @@ func (r *PodAutoscalerReconciler) computeReplicasForMetrics(ctx context.Context,
 
 // refer to knative-serving.
 // In pkg/reconciler/autoscaling/kpa/kpa.go:198, kpa maintains a list of deciders into multi-scaler, each of them corresponds to a pa (PodAutoscaler).
-// kpa create or update deciders in reconcile function.
-// for now, we update the kpascaler.spec when reconciling before calling the Scale function, to make the pa information pass into the Scale algorithm.
+// We create or update the scaler instance according to the pa passed in
 func (r *PodAutoscalerReconciler) updateScalerSpec(ctx context.Context, pa autoscalingv1alpha1.PodAutoscaler) error {
-	autoScaler, ok := r.AutoscalerMap[pa.Spec.ScalingStrategy]
+	metricKey := NewNamespaceNameMetricByPa(pa)
+	autoScaler, ok := r.AutoscalerMap[metricKey]
 	if !ok {
 		return fmt.Errorf("unsupported scaling strategy: %s", pa.Spec.ScalingStrategy)
 	}
@@ -635,6 +616,43 @@ func (r *PodAutoscalerReconciler) updateScalerSpec(ctx context.Context, pa autos
 
 func (r *PodAutoscalerReconciler) updateMetricsForScale(ctx context.Context, pa autoscalingv1alpha1.PodAutoscaler, scale *unstructured.Unstructured) (err error) {
 	currentTimestamp := time.Now()
+	metricKey := NewNamespaceNameMetricByPa(pa)
+	var autoScaler scaler.Scaler
+	autoScaler, exists := r.AutoscalerMap[metricKey]
+	if !exists {
+		klog.InfoS("Scaler not found, creating new scaler", "metricKey", metricKey, "type", pa.Spec.ScalingStrategy)
+
+		switch pa.Spec.ScalingStrategy {
+		case autoscalingv1alpha1.KPA:
+			// initialize all kinds of autoscalers, such as KPA and APA.
+			// TODO Currently, we initialize kpa with default config and allocate window with default length.
+			//  We then reallocate window according to pa until UpdateScalingContext.
+			//  it's not wrong, but we allocate window twice, to be optimized.
+			autoScaler, err = scaler.NewKpaAutoscaler(0, &pa)
+		case autoscalingv1alpha1.APA:
+			autoScaler, err = scaler.NewApaAutoscaler(0, &pa)
+		default:
+			return fmt.Errorf("unsupported scaling strategy: %s", pa.Spec.ScalingStrategy)
+		}
+		if err != nil {
+			return err
+		}
+		r.AutoscalerMap[metricKey] = autoScaler
+		klog.InfoS("New scaler added to AutoscalerMap", "metricKey", metricKey, "type", pa.Spec.ScalingStrategy, "spec", pa.Spec)
+	} else {
+		err := autoScaler.UpdateScalingContext(pa)
+		if err != nil {
+			klog.ErrorS(err, "update existed pa failed", "metricKey", metricKey, "type", pa.Spec.ScalingStrategy, "spec", pa.Spec)
+			return err
+		}
+	}
+
+	// update metrics
+	for _, source := range pa.Spec.MetricsSources {
+		metricKey := metrics.NewNamespaceNameMetric(pa.Namespace, pa.Spec.ScaleTargetRef.Name, source.Name)
+		return autoScaler.UpdateSourceMetrics(ctx, metricKey, source, currentTimestamp)
+	}
+
 	// Retrieve the selector string from the Scale object's Status,
 	// and convert *metav1.LabelSelector object to labels.Selector structure
 	labelsSelector, err := extractLabelSelector(scale)
@@ -651,15 +669,11 @@ func (r *PodAutoscalerReconciler) updateMetricsForScale(ctx context.Context, pa 
 
 	// TODO: do we need to indicate the metrics source.
 	// Technically, the metrics could come from Kubernetes metrics API (resource or custom), pod prometheus endpoint or ai runtime
-	metricKey := metrics.NewNamespaceNameMetric(pa.Namespace, pa.Spec.ScaleTargetRef.Name, pa.Spec.TargetMetric)
 
 	// Update targets
-	autoScaler, ok := r.AutoscalerMap[pa.Spec.ScalingStrategy]
-	if !ok {
-		return fmt.Errorf("unsupported scaling strategy: %s", pa.Spec.ScalingStrategy)
-	}
 	if err := autoScaler.UpdateScaleTargetMetrics(ctx, metricKey, podList.Items, currentTimestamp); err != nil {
 		return err
 	}
+
 	return nil
 }

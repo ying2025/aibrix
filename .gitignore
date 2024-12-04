@@ -26,6 +26,9 @@ go.work.sum
 .DS_Store
 __pycache__
 
+# Python virtual environment directory
+.venv
+
 # Jupyter notebook
 .ipynb_checkpoints/
 
@@ -33,3 +36,12 @@ __pycache__
 docs/build/
 !**/*.template.rst
 
+# benchmark logs, result and figs
+benchmarks/autoscaling/logs
+benchmarks/autoscaling/output_stats
+benchmarks/autoscaling/workload_plot
+benchmarks/generator/traces/*
+
+# simulator cache and output
+development/simulator/simulator_output
+development/simulator/cache

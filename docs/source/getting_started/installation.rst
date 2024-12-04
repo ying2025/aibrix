@@ -22,8 +22,8 @@ Stable Version
 
 .. code:: bash
 
-    kubectl apply -f https://github.com/aibrix/aibrix/releases/download/v0.1.0-rc.4/aibrix-dependency-v0.1.0-rc.4.yaml
-    kubectl apply -f https://github.com/aibrix/aibrix/releases/download/v0.1.0-rc.4/aibrix-core-v0.1.0-rc.4.yaml
+    kubectl apply -f https://github.com/aibrix/aibrix/releases/download/v0.1.1/aibrix-dependency-v0.1.1.yaml
+    kubectl apply -f https://github.com/aibrix/aibrix/releases/download/v0.1.1/aibrix-core-v0.1.1.yaml
 
 
 Nightly Version
@@ -40,6 +40,22 @@ Nightly Version
 
     # Install aibrix components
     kubectl create -k config/default
+
+
+Install Individual AIBrix Components
+------------------------------------
+
+.. code:: bash
+
+    # autoscaler controller
+    kubectl apply -k config/standalone/autoscaler-controller/
+
+    # distributed inference orchestrations controller
+    kubectl apply -k config/standalone/distributed-inference-controller/
+
+    # model adapter controller
+    kubectl apply -k config/standalone/model-adapter-controller
+
 
 
 Install AIBrix on Kind Cluster
