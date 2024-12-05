@@ -1,61 +1,55 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: pod-autoscaler
+  name: aibrix-gpu-optimizer-sa
   namespace: aibrix-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  namespace: aibrix-system
-  name: deployment-reader
+  name: gpu-optimizer-clusterrole
 rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
-  name: deployment-reader-binding
-  namespace: aibrix-system
+  name: aibrix-gpu-optimizer-clusterrole-binding
 subjects:
   - kind: ServiceAccount
-    name: pod-autoscaler
+    name: aibrix-gpu-optimizer-sa
     namespace: aibrix-system
 roleRef:
-  kind: Role
-  name: deployment-reader
+  kind: ClusterRole
+  name: gpu-optimizer-clusterrole
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gpu-optimizer
+  name: aibrix-gpu-optimizer
   namespace: aibrix-system
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: gpu-optimizer
+      app: aibrix-gpu-optimizer
   template:
     metadata:
       labels:
-        app: gpu-optimizer
+        app: aibrix-gpu-optimizer
     spec:
-      serviceAccountName: pod-autoscaler
+      serviceAccountName: aibrix-gpu-optimizer-sa
       automountServiceAccountToken: true # Important!
       containers:
-      - name: gpu-optimizer
+      - name: aibrix-gpu-optimizer
         image: aibrix/runtime:nightly
         command: ["python", "-m", "aibrix.gpu_optimizer.app", "--debug"]
         ports:
         - containerPort: 8080
         env:
-          - name: NAMESPACE
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.namespace
           - name: REDIS_HOST
             value: aibrix-redis-master.aibrix-system.svc.cluster.local
 ---
@@ -63,11 +57,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: gpu-optimizer
+  name: aibrix-gpu-optimizer
   namespace: aibrix-system
 spec:
   selector:
-    app: gpu-optimizer
+    app: aibrix-gpu-optimizer
   ports:
     - protocol: TCP
       port: 8080
