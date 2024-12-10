@@ -165,8 +165,8 @@ const (
 	QPS = "qps"
 )
 
-// GetFirstPaMetricSources Currently, we don't support metric resources that are more than one yet.
-func GetFirstPaMetricSources(pa PodAutoscaler) (MetricSource, error) {
+// GetPaMetricSources Currently, we don't support metric resources that are more than one yet.
+func GetPaMetricSources(pa PodAutoscaler) (MetricSource, error) {
 	if len(pa.Spec.MetricsSources) != 1 {
 		return MetricSource{}, fmt.Errorf("for now we only support one MetricsSource")
 	}

@@ -71,7 +71,7 @@ func NewBaseScalingContext() *BaseScalingContext {
 
 // UpdateByPaTypes should be invoked in any scaling context that embeds BaseScalingContext.
 func (b *BaseScalingContext) UpdateByPaTypes(pa *autoscalingv1alpha1.PodAutoscaler) error {
-	source, err := autoscalingv1alpha1.GetFirstPaMetricSources(*pa)
+	source, err := autoscalingv1alpha1.GetPaMetricSources(*pa)
 	if err != nil {
 		return err
 	}

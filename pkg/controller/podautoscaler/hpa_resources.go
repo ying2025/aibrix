@@ -63,9 +63,9 @@ func makeHPA(pa *pav1.PodAutoscaler) *autoscalingv2.HorizontalPodAutoscaler {
 	if minReplicas != nil && *minReplicas > 0 {
 		hpa.Spec.MinReplicas = minReplicas
 	}
-	source, err := pav1.GetFirstPaMetricSources(*pa)
+	source, err := pav1.GetPaMetricSources(*pa)
 	if err != nil {
-		klog.ErrorS(err, "Failed to GetFirstPaMetricSources")
+		klog.ErrorS(err, "Failed to GetPaMetricSources")
 		return nil
 	}
 
