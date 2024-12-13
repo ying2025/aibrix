@@ -21,6 +21,7 @@ import (
 	"math"
 
 	"github.com/aibrix/aibrix/pkg/cache"
+	metrics "github.com/aibrix/aibrix/pkg/metrics"
 	ratelimiter "github.com/aibrix/aibrix/pkg/plugins/gateway/ratelimiter"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -43,7 +44,7 @@ func NewLeastKvCacheRouter(ratelimiter ratelimiter.RateLimiter) Router {
 	}
 }
 
-func (r leastKvCacheRouter) Route(ctx context.Context, pods map[string]*v1.Pod) (string, error) {
+func (r leastKvCacheRouter) Route(ctx context.Context, pods map[string]*v1.Pod, model string) (string, error) {
 	var targetPodIP string
 	minKvCache := math.MaxFloat64
 
@@ -52,11 +53,17 @@ func (r leastKvCacheRouter) Route(ctx context.Context, pods map[string]*v1.Pod) 
 			continue
 		}
 
-		kvCache, err := r.cache.GetPodMetric(pod.Name, kv_cache)  // todo: kv_cache
+		gpuCache, err := r.cache.GetPodMetric(pod.Name, metrics.GPUCacheUsagePerc)
 		if err != nil {
 			klog.Error(err)
 			continue
 		}
+		cpuCache, err := r.cache.GetPodMetric(pod.Name, metrics.CPUCacheUsagePerc)
+		if err != nil {
+			klog.Error(err)
+			continue
+		}
+		kvCache := gpuCache.GetSimpleValue() + cpuCache.GetSimpleValue()
 
 		klog.V(4).Infof("pod: %v, podIP: %v, kaCache: %v", pod.Name, pod.Status.PodIP, kvCache)
 
@@ -66,5 +73,6 @@ func (r leastKvCacheRouter) Route(ctx context.Context, pods map[string]*v1.Pod) 
 		}
 	}
 
-	return targetPodIP + ":" + podPort, nil
+	klog.V(4).Infof("targetPodIP: %v", targetPodIP)
+	return targetPodIP + ":" + podMetricPort, nil
 }

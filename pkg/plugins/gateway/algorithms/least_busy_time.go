@@ -43,7 +43,7 @@ func NewLeastBusyTimeRouter(ratelimiter ratelimiter.RateLimiter) Router {
 	}
 }
 
-func (r leastBusyTimeRouter) Route(ctx context.Context, pods map[string]*v1.Pod) (string, error) {
+func (r leastBusyTimeRouter) Route(ctx context.Context, pods map[string]*v1.Pod, model string) (string, error) {
 	var targetPodIP string
 	minBusyTime := math.MaxFloat64
 
@@ -52,7 +52,8 @@ func (r leastBusyTimeRouter) Route(ctx context.Context, pods map[string]*v1.Pod)
 			continue
 		}
 
-		busyTimeRatio, err := r.cache.GetPodMetric(pod.Name, "gpu_busy_time_ratio")
+		busyTimeRatioMetric, err := r.cache.GetPodMetric(pod.Name, "gpu_busy_time_ratio")
+		busyTimeRatio := busyTimeRatioMetric.GetSimpleValue()
 		if err != nil {
 			klog.Error(err)
 			continue

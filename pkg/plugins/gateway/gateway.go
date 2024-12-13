@@ -528,6 +528,8 @@ func (s *Server) selectTargetPod(ctx context.Context, routingStrategy string, po
 		route = s.routers[routingStrategy]
 	case "throughput":
 		route = s.routers[routingStrategy]
+	case "least-kv-cache":
+		route = s.routers[routingStrategy]
 	default:
 		route = s.routers["random"]
 	}

@@ -18,12 +18,10 @@ package routingalgorithms
 
 import (
 	"context"
-	"math"
 
 	"github.com/aibrix/aibrix/pkg/cache"
 	ratelimiter "github.com/aibrix/aibrix/pkg/plugins/gateway/ratelimiter"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
 )
 
 type weightedRoundRobinRouter struct {
@@ -43,10 +41,10 @@ func NewWeightedRoundRobinRouter(ratelimiter ratelimiter.RateLimiter) Router {
 	}
 }
 
-func (r weightedRoundRobinRouter) Route(ctx context.Context, pods map[string]*v1.Pod) (string, error) {
+func (r weightedRoundRobinRouter) Route(ctx context.Context, pods map[string]*v1.Pod, model string) (string, error) {
 	// weightRoundRobin需要考虑pod状态异常、 pod增减的情况
 	var targetPodIP string
-	roundRobinCurrentIdx := ctx.weightedRoundRobinIdx
+	roundRobinCurrentIdx := 1 // ctx.weightedRoundRobinIdx
 	totalPodsNum := len(pods)
 
 	currentDealPodIdx := 0
@@ -65,6 +63,6 @@ func (r weightedRoundRobinRouter) Route(ctx context.Context, pods map[string]*v1
 	}
 
 	roundRobinCurrentIdx = (roundRobinCurrentIdx + 1) % totalPodsNum
-	ctx.setWeightedRoundRobinIdx(roundRobinCurrentIdx)
+	// ctx.setWeightedRoundRobinIdx(roundRobinCurrentIdx)
 	return targetPodIP, nil
 }

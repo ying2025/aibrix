@@ -43,7 +43,7 @@ func NewLeastExpectedLatencyRouter(ratelimiter ratelimiter.RateLimiter) Router {
 	}
 }
 
-func (r leastExpectedLatencyRouter) Route(ctx context.Context, pods map[string]*v1.Pod) (string, error) {
+func (r leastExpectedLatencyRouter) Route(ctx context.Context, pods map[string]*v1.Pod, model string) (string, error) {
 	var targetPodIP string
 	minExpectedLatency := math.MaxFloat64
 
@@ -53,25 +53,25 @@ func (r leastExpectedLatencyRouter) Route(ctx context.Context, pods map[string]*
 		}
 
 		// expected queuing latency
-		queuingLatency := 0
+		queuingLatency := 0.0
 
 		// expected prefill latency
-		avgLatencyPerInputToken, err := r.cache.GetPodMetric(pod.Name, avg_latency_per_input_token)  // todo: avg_latency_per_input_token
+		avgLatencyPerInputToken, err := r.cache.GetPodMetric(pod.Name, "avg_latency_per_input_token") // todo: avg_latency_per_input_token
 		if err != nil {
 			klog.Error(err)
 			continue
 		}
-		prefillLatency := avgLatencyPerInputToken * ctx.req.encodeLength  // todo: ctx.req.encodeLength
+		prefillLatency := avgLatencyPerInputToken.GetSimpleValue() * 1.0 // todo: ctx.req.encodeLength
 
 		// expected decode latency
-		avgLatencyPerOutputToken, err := r.cache.GetPodMetric(pod.Name, avg_latency_per_output_token)  // todo: avg_latency_per_output_token
+		avgLatencyPerOutputToken, err := r.cache.GetPodMetric(pod.Name, "avg_latency_per_output_token") // todo: avg_latency_per_output_token
 		if err != nil {
 			klog.Error(err)
 			continue
 		}
-		decodeLatency := avgLatencyPerOutputToken * r.cache.avgDecodeLength  // todo: r.cache.avgDecodeLength
+		decodeLatency := avgLatencyPerOutputToken.GetSimpleValue() * 1.0 // todo: r.cache.avgDecodeLength
 
-		totalExpectedLatency:= queuingLatency + prefillLatency + decodeLatency
+		totalExpectedLatency := queuingLatency + prefillLatency + decodeLatency
 		klog.V(4).Infof("pod: %v, podIP: %v, queuingLatency: %v, prefillLatency: %v, decodeLatency: %v, totalExpectedLatency: %v",
 			pod.Name, pod.Status.PodIP, queuingLatency, prefillLatency, decodeLatency, totalExpectedLatency)
 
@@ -81,5 +81,5 @@ func (r leastExpectedLatencyRouter) Route(ctx context.Context, pods map[string]*
 		}
 	}
 
-	return targetPodIP + ":" + podPort, nil
+	return targetPodIP + ":" + podMetricPort, nil
 }
