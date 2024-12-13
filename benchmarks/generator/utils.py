@@ -40,7 +40,7 @@ def plot_workload(workload_dict, interval_ms, output_file: str = None):
     """
     fig, ax = plt.subplots()
     for workload_name, workload in workload_dict.items():
-        concurrency_values = [len(item) for (_, item) in workload]
+        concurrency_values = [len(item['Requests']) for item in workload] #[len(item) for (_, item) in workload]
         ax.plot(np.arange(len(concurrency_values)) * interval_ms, concurrency_values, label=workload_name)
 
     ax.set_ylim(0,)
