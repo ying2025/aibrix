@@ -87,6 +87,8 @@ var (
 		metrics.NumRequestsSwapped,
 		metrics.AvgPromptThroughputToksPerS,
 		metrics.AvgGenerationThroughputToksPerS,
+		metrics.GPUCacheUsagePerc,
+		metrics.CPUCacheUsagePerc,
 	}
 	// histogram metric example - time_to_first_token_seconds, _sum, _bucket _count.
 	histogramMetricNames = []string{
@@ -102,6 +104,16 @@ var (
 
 	prometheusMetricNames = []string{
 		metrics.P95TTFT5m,
+		metrics.P95TTFT5mPod,
+		metrics.AvgTTFT5mPod,
+		metrics.P95TPOT5mPod,
+		metrics.AvgTPOT5mPod,
+		metrics.AvgPromptToksPerReq,
+		metrics.AvgGenerationToksPerReq,
+		metrics.AvgE2ELatencyPod,
+		metrics.AvgRequestsPerMinPod,
+		metrics.AvgPromptThroughputToksPerMinPod,
+		metrics.AvgGenerationThroughputToksPerMinPod,
 	}
 
 	podMetricRefreshIntervalInMilliseconds = getPodMetricRefreshInterval()

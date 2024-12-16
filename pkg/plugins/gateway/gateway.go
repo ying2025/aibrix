@@ -50,7 +50,7 @@ import (
 var (
 	defaultRPM           = 100
 	defaultTPMMultiplier = 1000
-	routingStrategies    = []string{"random", "least-request", "throughput"}
+	routingStrategies    = []string{"random", "least-request", "throughput", "least-kv-cache"}
 )
 
 type Server struct {
@@ -69,9 +69,10 @@ func NewServer(redisClient *redis.Client, c kubernetes.Interface) *Server {
 	}
 	r := ratelimiter.NewRedisAccountRateLimiter("aibrix", redisClient, 1*time.Minute)
 	routers := map[string]routing.Router{
-		"random":        routing.NewRandomRouter(),
-		"least-request": routing.NewLeastRequestRouter(),
-		"throughput":    routing.NewThroughputRouter(),
+		"random":         routing.NewRandomRouter(),
+		"least-request":  routing.NewLeastRequestRouter(),
+		"throughput":     routing.NewThroughputRouter(),
+		"least-kv-cache": routing.NewLeastKvCacheRouter(r),
 	}
 
 	return &Server{
