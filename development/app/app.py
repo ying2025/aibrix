@@ -458,13 +458,13 @@ def metrics():
     avg_generation_throughput = overrides.get("avg_generation_throughput", total / replicas if replicas > 0 else 0)
     prompt_tokens_total = overrides.get("prompt_tokens_total", randint(100, 1024) * success_total)
     generation_tokens_total = overrides.get("generation_tokens_total", randint(100, 1024) * success_total)
-    cpu_cache_usage_perc = overrides.get("cpu_cache_usage_perc", min(100.0, (running / max_running_capacity) * 100))
     running = overrides.get("running", randint(1, 100))
+    cpu_running = overrides.get("cpu_running", randint(1, 100))
     waiting = overrides.get("waiting", randint(1, 100))
     swapped = overrides.get("swapped", randint(1, 100))
     max_running_capacity = 100
     gpu_cache_usage_perc = overrides.get("gpu_cache_usage_perc", min(100.0, (running / max_running_capacity) * 100))
-    cpu_cache_usage_perc = overrides.get("cpu_cache_usage_perc", min(100.0, (running / max_running_capacity) * 100))
+    cpu_cache_usage_perc = overrides.get("cpu_cache_usage_perc", min(100.0, (cpu_running / max_running_capacity) * 100))
 
     # Define metrics and their attributes
     simple_metrics = [
