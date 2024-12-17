@@ -40,15 +40,15 @@ func (r leastLatencyScheduler) SelectPod(ctx context.Context, pods []v1.Pod) (*v
 	podLatencyMin := math.MaxFloat64
 
 	for _, pod := range pods {
-		avgLatencyPerInputToken, err := r.cache.GetPodMetric(pod.Name, avg_latency_per_input_token)  // todo: avg_latency_per_input_token
+		avgLatencyPerInputToken, err := r.cache.GetPodMetric(pod.Name, "avg_latency_per_input_token") // todo: avg_latency_per_input_token
 		if err != nil {
 			return nil, err
 		}
-		avgLatencyPerOutputToken, err := r.cache.GetPodMetric(pod.Name, avg_latency_per_output_token)  // todo: avg_latency_per_output_token
+		avgLatencyPerOutputToken, err := r.cache.GetPodMetric(pod.Name, "avg_latency_per_output_token") // todo: avg_latency_per_output_token
 		if err != nil {
 			return nil, err
 		}
-		avgLatency = avgLatencyPerInputToken + avgLatencyPerOutputToken * 10  // todo: adaptive weight
+		avgLatency := avgLatencyPerInputToken.GetSimpleValue() + avgLatencyPerOutputToken.GetSimpleValue()*10 // todo: adaptive weight
 		if avgLatency < podLatencyMin {
 			selectedPod = pod
 			podLatencyMin = avgLatency
