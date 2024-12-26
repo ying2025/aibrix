@@ -29,7 +29,7 @@ type binPackScheduler struct {
 	cache *cache.Cache
 }
 
-func NewbinPackScheduler(c *cache.Cache) Scheduler {
+func NewBinPackScheduler(c *cache.Cache) Scheduler {
 	return binPackScheduler{
 		cache: c,
 	}

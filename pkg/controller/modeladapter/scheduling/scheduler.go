@@ -34,11 +34,11 @@ type Scheduler interface {
 func NewScheduler(policyName string, c *cache.Cache) (Scheduler, error) {
 	switch policyName {
 	case "random":
-		return NewRandomScheduler(), nil
+		return NewRandomScheduler(c), nil
 	case "leastAdapters":
 		return NewLeastAdapters(c), nil
 	case "binPack":
-		return NewbinPackScheduler(c), nil
+		return NewBinPackScheduler(c), nil
 	case "leastLatency":
 		return NewLeastLatencyScheduler(c), nil
 	case "leastThroughput":
