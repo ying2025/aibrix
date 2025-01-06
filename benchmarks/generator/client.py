@@ -2,6 +2,8 @@ import argparse
 import logging
 import time
 import asyncio
+import random
+import httpx
 import openai
 import json
 
@@ -11,40 +13,61 @@ from utils import (load_workload, wrap_prompt_as_chat_message)
 # Asynchronous request handler
 async def send_request(client, model, endpoint, prompt, output_file):
     start_time = asyncio.get_event_loop().time()
-    try:
-        response = await client.chat.completions.create(
-            model=model,
-            messages=prompt,
-            temperature=0,
-            max_tokens=128
-        )
+    # lora_num = random.randint(1, 10)
+    # model = f"lora-{lora_num}"
+    api_key = "sk-kFJ12nKsFVfVmGpj3QzX65s4RbN2xJqWzPYCjYu7wT3BlbLi"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
 
+    payload = {
+        "model": model,
+        "prompt": prompt[0]["content"],
+        "temperature": 0,
+        "top_p": 1
+    }
+
+    async with httpx.AsyncClient() as aclient:
+        try:
+            response = await aclient.post(endpoint+"/v1/completions", headers=headers, json=payload)
+            response.raise_for_status()  # Raise an exception for HTTP error codes
+            response_json = response.json()
+        except Exception as e:
+            logging.error(f"Error sending request to at {endpoint}: {str(e)}")
+            return None
         latency = asyncio.get_event_loop().time() - start_time
-        prompt_tokens = response.usage.prompt_tokens
-        output_tokens = response.usage.completion_tokens
-        total_tokens = response.usage.total_tokens
-        throughput = output_tokens / latency
-        output_text = response.choices[0].message.content
+
+        # Extracting usage information
+        usage = response_json.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
+        total_tokens = usage.get("total_tokens", 0)
+        throughput = output_tokens / latency if latency > 0 else 0
+
+        # Extracting the generated text
+        choices = response_json.get("choices", [])
+        if choices:
+            output_text = choices[0].get("text") or choices[0].get("message", {}).get("content", "")
+        else:
+            output_text = ""
 
         result = {
-            "output": output_text,
+            "output": output_text.strip(),
             "prompt_tokens": prompt_tokens,
             "output_tokens": output_tokens,
             "total_tokens": total_tokens,
             "latency": latency,
             "throughput": throughput
         }
-
         # Write result to JSONL file
         output_file.write(json.dumps(result) + "\n")
         output_file.flush()  # Ensure data is written immediately to the file
 
         logging.warning(
-            f"Request completed in {latency:.2f} seconds with throughput {throughput:.2f} tokens/s, response {response}")
+            f"Request completed in {latency:.2f} seconds with throughput {throughput:.2f} tokens/s, response {result}")
         return result
-    except Exception as e:
-        logging.error(f"Error sending request to at {endpoint}: {str(e)}")
-        return None
+        
 
 
 async def benchmark(endpoint, model, api_key, workload_path, output_file_path):

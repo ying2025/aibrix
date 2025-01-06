@@ -22,6 +22,10 @@ def make_serializable(data):
         return int(data)
     elif isinstance(data, (np.floating, np.float64)):  # Convert NumPy float types to float
         return float(data)
+    elif isinstance(data, (np.ndarray)):
+        return data.tolist()
+    elif isinstance(data, bytes):
+        return data.decode('utf-8', errors='ignore')  # Handle binary data
     else:
         return data
 
@@ -64,18 +68,19 @@ def save_workload(load_struct: List[Any],
                   use_jsonl: Optional[bool] = False):
     # create the path if it doesn't exist
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    if use_jsonl:
-        with open(output_path + ".jsonl", "w") as file:
-            for row in load_struct:
-                json_line = json.dumps(row)  # Convert list to JSON string
-                file.write(json_line + "\n")
-            logging.warn(f'Saved workload file to {output_path + ".jsonl"}')
-    else:
-        with open(output_path + ".json", 'w') as file:
-            json.dump(load_struct, file, indent=4)
-        logging.warn(f'Saved workload file to {output_path + ".json"}')
-
+    try:
+        if use_jsonl:
+            with open(output_path + ".jsonl", "w") as file:
+                for row in load_struct:
+                    json_line = json.dumps(row)  # Convert list to JSON string
+                    file.write(json_line + "\n")
+                logging.warn(f'Saved workload file to {output_path + ".jsonl"}')
+        else:
+            with open(output_path + ".json", 'w') as file:
+                json.dump(load_struct, file, indent=4)
+            logging.warn(f'Saved workload file to {output_path + ".json"}')
+    except Exception as e:
+        print(f"Exception is {e}")
 
 def load_workload(input_path: str) -> List[Any]:
     load_struct = None

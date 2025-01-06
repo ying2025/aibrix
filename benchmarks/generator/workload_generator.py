@@ -1,6 +1,7 @@
 import logging
 import math
 import random
+import json
 import pandas as pd
 import argparse
 import csv
@@ -60,8 +61,12 @@ def generate_from_internal_csv(file_path: str,
     
     print(f"input_lengths size {len(input_lengths)} output_lengths size {len(output_lengths)}")
     sharegpt_df = load_sharegpt_requests(dataset_path=prompt_file_path, tokenizer=tokenizer)
+    print(f"head {sharegpt_df.head()}")
+    print(f"duration_ms is {duration_ms}")
+    print(f"summary_internal_ms is {summary_interval_ms}")
     for i, interval_requests in enumerate(traffic):
-        mean_rate = round(interval_requests / (summary_interval_ms / interval_ms))
+        mean_rate = max(round(interval_requests / (summary_interval_ms / interval_ms)), 1)
+
         input_length = input_lengths[i] if len(input_lengths)>0 else None
         output_length = output_lengths[i] if len(output_lengths)>0 else None
         for ts_delta in list(range(0, summary_interval_ms, interval_ms)):

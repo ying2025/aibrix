@@ -95,10 +95,9 @@ def sample_sharegpt_requests_len_range(
                 (df["completion_len"] >= output_range[0]) &
                 (df["completion_len"] <= output_range[1])
                 ]
-
             if not filtered.empty:
                 # Select the first match or random sample
-                sample = filtered.iloc[0]  # Or filtered.sample(1) for random
+                sample = filtered.sample(1).iloc[0]  # Or filtered.sample(1) for random
                 filtered_results.append({"prompt": sample["prompt"],
                                          "prompt_length": sample["prompt_len"],
                                          "output_length": sample["completion_len"]})
