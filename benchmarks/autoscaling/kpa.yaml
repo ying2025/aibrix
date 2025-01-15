@@ -1,7 +1,8 @@
+# Pod autoscaler works with gpu-optimizer
 apiVersion: autoscaling.aibrix.ai/v1alpha1
 kind: PodAutoscaler
 metadata:
-  name: deepseek-coder-7b-instruct-kpa
+  name: podautoscaler-deepseek-coder-7b-instruct-kpa
   labels:
     app.kubernetes.io/name: aibrix
     app.kubernetes.io/managed-by: kustomize
@@ -13,6 +14,11 @@ spec:
     name: aibrix-model-deepseek-coder-7b-instruct
   minReplicas: 1
   maxReplicas: 10
-  targetMetric: "vllm:gpu_cache_usage_perc"
-  targetValue: "0.5"
+  metricsSources:
+    - metricSourceType: pod
+      protocolType: http
+      port: "8000"
+      path: metrics
+      targetMetric: "gpu_cache_usage_perc"
+      targetValue: "50"
   scalingStrategy: "KPA"
