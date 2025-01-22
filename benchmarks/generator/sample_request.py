@@ -2,12 +2,16 @@ import logging
 import json
 import sys
 import random 
+import time
 
 import pandas as pd
+import numpy as np
 
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict, Any
 from transformers import PreTrainedTokenizerBase
 
+RANDOM_SEED = 1111  # Define at top level
+np.random.seed(RANDOM_SEED)
 
 def load_requests(
         dataset_path: str,
@@ -17,6 +21,46 @@ def load_requests(
         return load_sharegpt_requests(dataset_path, tokenizer)
     else:
         return load_generated_dataset(dataset_path, tokenizer)
+
+class Request:
+    def __init__(self, timestamp, request_id, input_token_len, output_token_len):
+        self.timestamp = int(timestamp)
+        self.request_id = request_id
+        self.input_token_len = int(input_token_len)
+        self.output_token_len = int(output_token_len)
+        self.prompt = None
+        
+    def __str__(self):
+        ret_str = ""
+        ret_str += f"Request ID: {self.request_id}\n"
+        ret_str += f"Timestamp: {self.timestamp}\n"
+        # ret_str += f"Input Token Length: {self.input_token_len}\n"
+        ret_str += f"Prompt Length: {self.input_token_len}\n"
+        ret_str += f"Output Length: {self.output_token_len}\n"
+        ret_str += f"Prompt: {self.prompt}\n"
+        return ret_str
+        
+    def to_dict(self):
+        return {
+            "Prompt Length": self.input_token_len,
+            "Output Length": self.output_token_len,
+            "prompt": self.prompt
+        }
+
+
+class RequestEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Request):
+            return {
+                "timestamp": int(obj.timestamp),  # Convert to native int
+                "requests": [obj.to_dict()]
+            }
+        if isinstance(obj, np.integer):  # Handle numpy integers
+            return int(obj)
+        if isinstance(obj, np.floating):  # Handle numpy floats
+            return float(obj)
+        return super().default(obj)
+
     
 def load_sharegpt_requests(
         dataset_path: str,
@@ -32,8 +76,22 @@ def load_sharegpt_requests(
     ]
     df = pd.DataFrame(dataset, columns=["prompt", "completion"])
     # Tokenize and calculate lengths
+    ###############
+    ## TODO: It takes 120 seconds. needs to be optimized
+    print("prompt len calc start")
+    ts = time.time()
     df["prompt_len"] = df["prompt"].apply(lambda x: len(tokenizer(x).input_ids))
+    print(f"prompt len calc took {time.time() - ts}")
+    ###############
+    
+    ###############
+    ## TODO: It takes 75 seconds. needs to be optimized
+    print("completion len calc start")
+    ts = time.time()
     df["completion_len"] = df["completion"].apply(lambda x: len(tokenizer(x).input_ids))
+    print(f"completion len calc took {time.time() - ts}")
+    ###############
+    
     logging.warn(f"...Complete dataframe transformation")
     return df
 
@@ -163,3 +221,114 @@ def sample_requests_all(
                         "output_length": row["completion_len"]})
 
     return results
+
+def sample_sharegpt_requests_len_range(df:pd.DataFrame,request,initial_err_perc:float=0.5,err_step:float=0.05):
+    target_input_len=request.input_token_len
+    target_output_len=request.output_token_len
+    total_lens=df['prompt_len']+df['completion_len']
+    length_ratios=df['prompt_len']/(df['completion_len'].replace(0,1))
+    err_perc=initial_err_perc
+    while err_perc>=0:
+        input_range=[int(target_input_len*(1-err_perc)),int(target_input_len*(1+err_perc))]
+        output_range=[int(target_output_len*(1-err_perc)),int(target_output_len*(1+err_perc))]
+        mask=(df['prompt_len']>=input_range[0])&(df['prompt_len']<=input_range[1])&(df['completion_len']>=output_range[0])&(df['completion_len']<=output_range[1])
+        filtered=df[mask]
+        if not filtered.empty:
+            logging.debug(f"Found {len(filtered)} matches with err_perc={err_perc}")
+            sample=filtered.sample(n=1).iloc[0]
+            request.prompt=sample["prompt"]
+            request.input_token_len=sample["prompt_len"]
+            request.output_token_len=sample["completion_len"]
+            return request
+        # logging.debug(f"No matches with err_perc={err_perc}, trying smaller range")
+        err_perc-=err_step
+    
+    # logging.warning(f"No matches found with direct range matching, trying closest match")
+    target_total=target_input_len+target_output_len
+    target_ratio=target_input_len/target_output_len if target_output_len!=0 else float('inf')
+    
+    try:
+        scores=np.abs(total_lens-target_total)/target_total*0.6+np.abs(length_ratios-target_ratio)/target_ratio*0.4
+        num_candidates=max(1,len(df)//10)
+        best_indices=np.argpartition(scores,num_candidates)[:num_candidates]
+        best_sample=df.iloc[np.random.choice(best_indices)]
+        
+        # logging.info(f"Found closest match: input_len={best_sample['prompt_len']}, output_len={best_sample['completion_len']}")
+        request.prompt=best_sample["prompt"]
+        request.input_token_len=best_sample["prompt_len"]
+        request.output_token_len=best_sample["completion_len"]
+        if request.prompt is None:
+            raise ValueError("Selected sample has null prompt")
+        return request
+        
+    except Exception as e:
+        error_msg=f"Failed to find match for request {request.request_id}. Error: {str(e)}"
+        logging.error(error_msg)
+        logging.error(f"Request details: {request}")
+        raise Exception(error_msg) from e
+
+# def sample_sharegpt_requests_len_range(
+#         df: pd.DataFrame,
+#         request,
+#         initial_err_perc: Optional[float] = 0.5,
+#         err_step: float = 0.05
+# ):
+#     err_perc = initial_err_perc
+#     target_input_len = request.input_token_len
+#     target_output_len = request.output_token_len
+    
+#     # First try with regular error percentage relaxation
+#     while err_perc >= 0:
+#         input_range = [int(target_input_len * (1 - err_perc)), int(target_input_len * (1 + err_perc))]
+#         output_range = [int(target_output_len * (1 - err_perc)), int(target_output_len * (1 + err_perc))]
+        
+#         filtered = df[
+#             (df["prompt_len"] >= input_range[0]) &
+#             (df["prompt_len"] <= input_range[1]) &
+#             (df["completion_len"] >= output_range[0]) &
+#             (df["completion_len"] <= output_range[1])
+#         ]
+        
+#         if not filtered.empty:
+#             sample = filtered.sample(n=1).iloc[0]
+#             request.prompt = sample["prompt"]
+#             request.input_token_len = sample["prompt_len"]
+#             request.output_token_len = sample["completion_len"]
+#             return request
+        
+#         logging.debug(f"Relax err_perc {err_perc} by {err_step}")
+#         err_perc -= err_step
+
+#     # If no match found, try a different approach: find closest match by total token length
+#     logging.debug("No match found with error percentage relaxation, trying closest match approach")
+    
+#     # Calculate total token length for request and dataset
+#     target_total = target_input_len + target_output_len
+#     df['total_len'] = df['prompt_len'] + df['completion_len']
+    
+#     # Calculate relative ratio between input and output lengths
+#     target_ratio = target_input_len / target_output_len if target_output_len != 0 else float('inf')
+#     df['length_ratio'] = df['prompt_len'] / df['completion_len'].replace(0, 1)
+    
+#     # Score each row based on how close it is to target lengths
+#     # Lower score is better
+#     df['score'] = (
+#         np.abs(df['total_len'] - target_total) / target_total * 0.6 +  # 60% weight on total length
+#         np.abs(df['length_ratio'] - target_ratio) / target_ratio * 0.4  # 40% weight on ratio
+#     )
+    
+#     # Get the best matching rows (top 10%)
+#     num_candidates = max(1, len(df) // 10)
+#     best_matches = df.nsmallest(num_candidates, 'score')
+    
+#     if not best_matches.empty:
+#         sample = best_matches.sample(n=1).iloc[0]
+#         request.prompt = sample["prompt"]
+#         request.input_token_len = sample["prompt_len"]
+#         request.output_token_len = sample["completion_len"]
+        
+#         # Clean up temporary columns
+#         df.drop(['total_len', 'length_ratio', 'score'], axis=1, inplace=True)
+#         return request
+    
+#     raise Exception(f"No suitable match found for request {request.request_id} even after trying all relaxation methods.\nOriginal request: {request}")

@@ -2,86 +2,104 @@ import logging
 import math
 import random
 import pandas as pd
+import matplotlib.pyplot as plt
 import argparse
 import csv
-
+import json
+import time
+import numpy as np
+import os
+from scipy import stats
+from scipy.optimize import minimize
+from datetime import datetime, timedelta
+from typing import List, Dict
 from pandas import Timedelta
 from typing import List, Tuple, Dict, Any
 from transformers import PreTrainedTokenizerBase
 from datetime import timedelta
 from sample_request import (load_requests,  sample_requests_len_range, sample_requests_all)
-from utils import (get_tokenizer, plot_workload, make_serializable, save_workload, get_sample_interval_ms)
+from sample_request import (load_sharegpt_requests,  sample_sharegpt_requests_len_range, Request, RequestEncoder, RANDOM_SEED)
+from utils import (get_tokenizer, plot_workload, make_serializable, save_workload, plot_rps_workload, get_sample_interval_ms)
+from collections import defaultdict
 
 # Set up logging to print only warning and above level messages
 logging.basicConfig(level=logging.INFO)
 
+np.random.seed(RANDOM_SEED)
+
 
 def generate_from_internal_csv(file_path: str,
-                               prompt_file_path: str,
-                               duration_ms: int,
-                               tokenizer: PreTrainedTokenizerBase,
-                               interval_ms: int = 1000,
-                               output_file: str = 'output/output',
-                               input_trace: str = None,
-                               output_trace: str = None,
-                               to_jsonl: bool = False,
-                               ) -> List[List[Any]]:
-    traffic = []
-    input_lengths = []
-    output_lengths = []
-    sample_interval_ms = get_sample_interval_ms(file_path)
-    with open(file_path, 'r') as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            if 'Total' in row:
-                total_value = row['Total']
-                if total_value:
-                    traffic.append(float(total_value))
-    if input_trace is not None:
-        with open(input_trace, 'r') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                if 'P50' in row:
-                    length = row['P50']
-                    if length:
-                        input_lengths.append(round(float(length)))
-    if output_trace is not None:
-        with open(output_trace, 'r') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                if 'P50' in row:
-                    length = row['P50']
-                    if length:
-                        output_lengths.append(round(float(length)))
-        
-    workload = []
-    ts = 0
-    sharegpt_df = load_requests(dataset_path=prompt_file_path, tokenizer=tokenizer)
-    for i, interval_requests in enumerate(traffic):
-        mean_rate = round(interval_requests * (interval_ms / 1000))
-        input_length = input_lengths[i] if len(input_lengths)>0 else None
-        output_length = output_lengths[i] if len(output_lengths)>0 else None
-        for ts_delta in list(range(0, sample_interval_ms, interval_ms)):
-            concurrent_sampled_reqs = sample_requests_len_range(
-                df=sharegpt_df,
-                num_requests=mean_rate,
-                input_lens=[input_length] * mean_rate, 
-                output_lens=[output_length] * mean_rate, 
-                initial_err_perc=0.5,
-                err_step=0.05
-            )
-            if concurrent_sampled_reqs:  # Only add non-empty groups
-                workload.append({"timestamp": ts + ts_delta, "requests": concurrent_sampled_reqs})  
-            else:
-                logging.error(f"sampled return {concurrent_sampled_reqs}")
-        ts += sample_interval_ms
-        if ts > duration_ms:
-            break
-    
-    
-    workload = make_serializable(workload)
-    save_workload(workload, output_file, use_jsonl=to_jsonl)
-    return workload
+                            prompt_file_path: str, 
+                            duration_ms: int,
+                            summary_interval_ms: int,
+                            tokenizer: PreTrainedTokenizerBase,
+                            interval_ms: int = 1000,
+                            output_file: str = 'output/output',
+                            input_trace: str = None,
+                            output_trace: str = None,
+                            to_jsonl: bool = False,
+                            ) -> Dict[str, Any]:
+   traffic = []
+   input_lengths = []
+   output_lengths = [] 
+   
+   # Read traffic file
+   with open(file_path, 'r') as file:
+       reader = csv.DictReader(file)
+       for row in reader:
+           if 'Total' in row:
+               total_value = row['Total']
+               if total_value:
+                   traffic.append(float(total_value))
+
+   # Read input lengths if provided
+   if input_trace:
+       with open(input_trace, 'r') as file:
+           reader = csv.DictReader(file)
+           for row in reader:
+               if 'P50' in row:
+                   length = row['P50']
+                   if length:
+                       input_lengths.append(round(float(length)))
+
+   # Read output lengths if provided                    
+   if output_trace:
+       with open(output_trace, 'r') as file:
+           reader = csv.DictReader(file)
+           for row in reader:
+               if 'P50' in row:
+                   length = row['P50']
+                   if length:
+                       output_lengths.append(round(float(length)))
+   
+   print(f"input_lengths size {len(input_lengths)} output_lengths size {len(output_lengths)}")
+
+   # Generate workload
+   sharegpt_df = load_sharegpt_requests(dataset_path=prompt_file_path, tokenizer=tokenizer)
+   workload = {
+       "timestamp": 0, 
+       "requests": [] 
+   }
+
+   for i, interval_requests in enumerate(traffic):
+       mean_rate = round(interval_requests / (summary_interval_ms / interval_ms))
+       input_length = input_lengths[i] if len(input_lengths)>0 else None
+       output_length = output_lengths[i] if len(output_lengths)>0 else None
+       
+       concurrent_sampled_reqs = sample_sharegpt_requests_len_range(
+           df=sharegpt_df,
+           num_requests=mean_rate,
+           input_lens=[input_length] * mean_rate,
+           output_lens=[output_length] * mean_rate,
+           initial_err_perc=0.5,
+           err_step=0.05
+       )
+       if concurrent_sampled_reqs:
+           workload["requests"].extend(concurrent_sampled_reqs)
+           
+   workload = make_serializable(workload)
+   save_workload(workload, output_file, use_jsonl=to_jsonl)
+   return workload
 
 
 def generate_constant(prompt_file_path: str,
@@ -216,6 +234,78 @@ def generate_synthetic(prompt_file_path: str,
     return workload
 
 
+def generate_synthetic_rps(
+        prompt_file_path: str,
+        rps_dist: List[int],
+        input_token_len_dist: List[int],
+        output_token_len_dist: List[int],
+    ) -> List[Dict[str, Any]]:
+    
+    if not (len(rps_dist) == len(input_token_len_dist) == len(output_token_len_dist)):
+        raise ValueError(f"All distributions must have the same length, len(rps_dist): {len(rps_dist)}, len(input_token_len_dist): {len(input_token_len_dist)}, len(output_token_len_dist): {len(output_token_len_dist)}")
+    workload = []
+    current_time = 0
+    req_id = 0
+    total_seconds = len(rps_dist)
+    while current_time < total_seconds * 1000:
+        time_idx = int(current_time / 1000)
+        if time_idx >= total_seconds:
+            time_idx = total_seconds - 1
+        current_rate = rps_dist[time_idx]
+        current_input_len = input_token_len_dist[time_idx]
+        current_output_len = output_token_len_dist[time_idx]
+        inter_arrival_time = np.random.exponential(scale=1000/current_rate) 
+        current_time += inter_arrival_time
+        if current_time < total_seconds * 1000:
+            request = Request(int(current_time), req_id, current_input_len,current_output_len)
+            workload.append(request)
+            req_id += 1
+    
+    print("start load_sharegpt")
+    ts = time.time()
+    if os.path.exists("sharegpt_df.csv"):
+        print(f"Reading sharedgpt_df.csv")
+        sharegpt_df = pd.read_csv("sharegpt_df.csv")
+    else:
+        sharegpt_df = load_sharegpt_requests(dataset_path=prompt_file_path, tokenizer=tokenizer)
+        sharegpt_df.to_csv("sharegpt_df.csv")
+        print(f"Saved sharegpt_df {len(sharegpt_df)}")
+    print(f"load_sharedgpt took {int(time.time() - ts)}s")
+    
+    prompt_workload = []
+    for request in workload:
+        prompt_request = sample_sharegpt_requests_len_range(
+            df=sharegpt_df,
+            request=request,
+            initial_err_perc=0.5,
+            err_step=0.05
+        )
+        temp = {"timestamp": prompt_request.timestamp, "requests": [prompt_request]}
+        prompt_workload.append(temp)
+    return prompt_workload
+
+
+
+def generate_sine_rps_dist(mean_rps: int, amplitude: float, period: int, total_seconds: int) -> List[int]:
+    t = np.arange(total_seconds)
+    mean_rps = np.full_like(t, mean_rps, dtype=float)
+    mean_rps += amplitude * np.sin(2 * np.pi * t / period)
+    return [max(1, int(rate)) for rate in mean_rps]
+
+def generate_poisson_rps_dist(mean_rps:int,total_seconds:int)->List[int]:
+    return np.random.poisson(lam=mean_rps,size=total_seconds).tolist()
+
+
+def generate_token_len_dist(mean_len: int, amplitude: float, std: float, period: int, total_seconds: int) -> List[int]:
+    t = np.arange(total_seconds)
+    token_len_list = np.full_like(t, mean_len, dtype=float)
+    token_len_list += amplitude * np.sin(2 * np.pi * t / period)
+    normal_values = np.random.normal(1, std, size=len(t))
+    token_len_list *= normal_values
+    token_len_list = [int(max(1, x)) for x in token_len_list]
+    return token_len_list
+
+
 def generate_from_azure_csv(file_path: str,
                             prompt_file_path: str,
                             duration_ms: int,
@@ -301,12 +391,334 @@ def pair_requests_with_prompts_round_robin(workload: List[List[Any]],
     return paired_workload
 
 
+def read_distribution_stats(csv_path: str) -> Tuple[List[Dict], List[Dict], List[Dict]]:
+    df = pd.read_csv(csv_path, parse_dates=['timestamp'])
+    time_diffs = df['timestamp'].diff().dt.total_seconds()
+    section_in_seconds = int(time_diffs.mean())  # Use average time difference
+    input_len_configs = []
+    output_len_configs = []
+    rps_configs = []
+    for _, row in df.iterrows():
+        input_len_configs.append({
+            "p50": float(row['input_len_p50']),
+            "p70": float(row['input_len_p70']),
+            "p90": float(row['input_len_p90']),
+            "p99": float(row['input_len_p99']),
+            "period": section_in_seconds,
+            "total_seconds": section_in_seconds
+        })
+        output_len_configs.append({
+            "p50": float(row['output_len_p50']),
+            "p70": float(row['output_len_p70']),
+            "p90": float(row['output_len_p90']),
+            "p99": float(row['output_len_p99']),
+            "period": section_in_seconds,
+            "total_seconds": section_in_seconds
+        })
+        rps_configs.append({
+            "mean_rps": float(row['qps_success']),
+            "amplitude": float(row['qps_success']) * 0.2,  # 20% variation
+            "period": section_in_seconds,
+            "total_seconds": section_in_seconds
+        })
+    return input_len_configs, output_len_configs, rps_configs
+
+
+
+## New with grouping
+def generate_workload_from_stats(
+    csv_path: str,
+    prompt_file: str,
+    output_dir: str,
+    workload_subname,
+) -> Dict:
+    input_len_configs, output_len_configs, rps_configs = read_distribution_stats(csv_path)
+    input_len_dist = []
+    output_len_dist = []
+    rps_dist = []
+    for config in rps_configs:
+        # rps_segment = generate_sine_rps_dist(**config)
+        rps_segment = generate_poisson_rps_dist(config['mean_rps'], config['total_seconds'])
+        rps_dist.extend(rps_segment)
+    for config in input_len_configs:
+        input_segment = generate_token_len_dist_with_percentiles(**config)
+        input_len_dist.extend(input_segment)
+    for config in output_len_configs:
+        output_segment = generate_token_len_dist_with_percentiles(**config)
+        output_len_dist.extend(output_segment)
+    
+    scenarios = {
+        'csv-based-scenario': {
+            'rps_dist': rps_dist,
+            'input_token_len_dist': input_len_dist,
+            'output_token_len_dist': output_len_dist,
+        }
+    }
+    
+    workload_dict = {}
+    for scenario_name, scenario in scenarios.items():
+        ts = time.time()
+        generated_workload = generate_synthetic_rps(
+            prompt_file,
+            scenario['rps_dist'],
+            scenario['input_token_len_dist'],
+            scenario['output_token_len_dist'],
+        )
+        print(f"Generated workload for {scenario_name} took {int(time.time() - ts)} seconds")
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        output_path = f"{output_dir}/generated_workload-{workload_subname}.jsonl"
+
+        # Group requests by timestamp in dictionary
+        timestamp_groups = defaultdict(list)
+        for item in generated_workload:
+            request = item["requests"][0]  # Each item has a single request
+            timestamp = item["timestamp"]
+            timestamp_groups[timestamp].append({
+                "Prompt Length": request.input_token_len,
+                "Output Length": request.output_token_len,
+                "prompt": request.prompt
+            })
+
+        # Create merged workload with sorted timestamps
+        flattened_workload = [
+            {
+                "timestamp": timestamp,
+                "requests": requests
+            }
+            for timestamp, requests in sorted(timestamp_groups.items())
+        ]
+
+        with open(output_path, 'w') as f:
+            for req in flattened_workload:
+                json.dump(req, f, cls=RequestEncoder)
+                f.write('\n')
+                
+        print(f"** Saved generated workload to {output_path}")
+        workload_dict[scenario_name] = generated_workload
+    
+    return workload_dict
+
+## Old without grouping
+# def generate_workload_from_stats(
+#     csv_path: str,
+#     prompt_file: str,
+#     output_dir: str,
+#     workload_subname,
+# ) -> Dict:
+#     input_len_configs, output_len_configs, rps_configs = read_distribution_stats(csv_path)
+#     input_len_dist = []
+#     output_len_dist = []
+#     rps_dist = []
+#     for config in rps_configs:
+#         # rps_segment = generate_sine_rps_dist(**config)
+#         rps_segment=generate_poisson_rps_dist(config['mean_rps'],config['total_seconds'])
+#         rps_dist.extend(rps_segment)
+#     for config in input_len_configs:
+#         input_segment = generate_token_len_dist_with_percentiles(**config)
+#         input_len_dist.extend(input_segment)
+#     for config in output_len_configs:
+#         output_segment = generate_token_len_dist_with_percentiles(**config)
+#         output_len_dist.extend(output_segment)
+#     scenarios = {
+#         'csv-based-scenario': {
+#             'rps_dist': rps_dist,
+#             'input_token_len_dist': input_len_dist,
+#             'output_token_len_dist': output_len_dist,
+#         }
+#     }
+#     workload_dict = {}
+#     for scenario_name, scenario in scenarios.items():
+#         ts = time.time()
+#         generated_workload = generate_synthetic_rps(
+#             prompt_file,
+#             scenario['rps_dist'],
+#             scenario['input_token_len_dist'],
+#             scenario['output_token_len_dist'],
+#         )
+#         print(f"Generated workload for {scenario_name} took {int(time.time() - ts)} seconds")
+
+#         if not os.path.exists(output_dir):
+#             os.makedirs(output_dir)
+#         output_path = f"{output_dir}/generated_workload-{workload_subname}.jsonl"
+
+#         flattened_workload = []
+#         for item in generated_workload:
+#             request = item["requests"][0]  # Each item has a single request
+#             flattened_workload.append({
+#                 "timestamp": item["timestamp"], 
+#                 "requests": [{
+#                     "Prompt Length": request.input_token_len,
+#                     "Output Length": request.output_token_len,
+#                     "prompt": request.prompt
+#                 }]
+#             })
+
+
+#         with open(output_path, 'w') as f:
+#             # for req in generated_workload:
+#             for req in flattened_workload:
+#                 json.dump(req, f, cls=RequestEncoder)
+#                 f.write('\n')
+#         print(f"** Saved generated workload to {output_path}")
+#         workload_dict[scenario_name] = generated_workload
+
+#     # After generating the distributions but before returning:
+#     ts = time.time()
+#     plot_distribution_comparison(
+#         csv_path=csv_path,
+#         generated_data={
+#             'input_token_len_dist': input_len_dist,
+#             'output_token_len_dist': output_len_dist,
+#             'rps_dist': rps_dist
+#         },
+#         output_path=f"{output_dir}/distribution_comparison-{workload_subname}.pdf"
+#     )
+#     print(f"Generated distribution comparison plot in {int(time.time() - ts)} seconds")
+
+#     return workload_dict
+
+def generate_token_len_dist_with_percentiles(
+    p50: int,
+    p70: int,
+    p90: int,
+    p99: int,
+    period: int,
+    total_seconds: int,
+    amplitude_factor: float = 0.2  # Controls the amplitude of sinusoidal variation
+) -> List[int]:
+    if not (p50 < p70 < p90 < p99):
+        raise ValueError("Percentiles must be strictly increasing: p50 < p70 < p90 < p99")
+    if p50 <= 0:
+        raise ValueError("Token lengths must be positive")
+    percentiles = [0.50, 0.70, 0.90, 0.99]
+    token_lengths = [p50, p70, p90, p99]
+    log_lengths = np.log(token_lengths)
+    def objective(params, percs, lengths):
+        mu, sigma = params
+        expected = stats.norm.ppf(percs, mu, sigma)
+        return np.sum((expected - lengths) ** 2)
+    result = minimize(
+        objective,
+        x0=[np.mean(log_lengths), np.std(log_lengths)],
+        args=(percentiles, log_lengths),
+        method='Nelder-Mead'
+    )
+    mu, sigma = result.x
+    t = np.arange(total_seconds)
+    amplitude = p50 * amplitude_factor
+    sinusoidal_variation = amplitude * np.sin(2 * np.pi * t / period)
+    base_samples = np.random.lognormal(mu, sigma, size=total_seconds)
+    scale_factor = p50 / np.median(base_samples)
+    token_len_list = base_samples * scale_factor + sinusoidal_variation
+    token_len_list = [int(max(1, x)) for x in token_len_list]
+    return token_len_list
+
+
+
+
+def calculate_percentiles(data,window_size, timestamps):
+    percentiles=[]
+    timestamps_aggregated=[]
+    for i in range(0,len(data),window_size):
+        window_data=data[i:i+window_size]
+        if len(window_data)>0:
+            p50=np.percentile(window_data,50)
+            p70=np.percentile(window_data,70)
+            p90=np.percentile(window_data,90)
+            p99=np.percentile(window_data,99)
+            percentiles.append([p50,p70,p90,p99])
+            timestamps_aggregated.append(timestamps[i])
+    return np.array(percentiles),timestamps_aggregated
+
+def plot_distribution_comparison(
+    csv_path: str,
+    generated_data: Dict[str, List],
+    output_path: str = "distribution_comparison.png"
+):
+    df=pd.read_csv(csv_path,parse_dates=['timestamp'])
+    fig,axs=plt.subplots(3,1,figsize=(15,20))
+    plt.subplots_adjust(hspace=0.3)
+    window=len(generated_data['input_token_len_dist'])//len(df)
+    timestamps=[df['timestamp'].iloc[0]+timedelta(seconds=i) for i in range(len(generated_data['input_token_len_dist']))]
+    
+    ax=axs[0]
+    ax_twin = ax.twinx()
+    ax.plot(df['timestamp'],df['input_len_p50'],'bo-',label='Original P50',alpha=0.7)
+    ax_twin.plot(df['timestamp'],df['input_len_p70'],'go-',label='Original P70',alpha=0.7)
+    ax_twin.plot(df['timestamp'],df['input_len_p90'],'ro-',label='Original P90',alpha=0.7)
+    ax_twin.plot(df['timestamp'],df['input_len_p99'],'mo-',label='Original P99',alpha=0.7)
+    gen_input=np.array(generated_data['input_token_len_dist'])
+    ax_twin.plot(timestamps,gen_input,'k-',label='Generated',alpha=0.3)
+    input_percentiles,input_timestamps=calculate_percentiles(gen_input,window, timestamps)
+    if len(input_percentiles)>0:
+        ax.plot(input_timestamps,input_percentiles[:,0],'bx-.',label='Generated P50',alpha=0.7)
+        ax_twin.plot(input_timestamps,input_percentiles[:,1],'gx-.',label='Generated P70',alpha=0.7)
+        ax_twin.plot(input_timestamps,input_percentiles[:,2],'rx-.',label='Generated P90',alpha=0.7)
+        ax_twin.plot(input_timestamps,input_percentiles[:,3],'mx-.',label='Generated P99',alpha=0.7)
+    ax.set_title('Input Length Distribution Comparison')
+    ax.set_ylabel('Token Length')
+    ax.legend(loc='upper left')
+    ax_twin.legend(loc='upper right')
+    ax.grid(True)
+    ax.set_ylim(bottom=0)
+    ax_twin.set_ylim(bottom=0)
+
+    ax=axs[1]
+    ax_twin = ax.twinx()
+    ax.plot(df['timestamp'],df['output_len_p50'],'bo-',label='Original P50',alpha=0.7)
+    ax_twin.plot(df['timestamp'],df['output_len_p70'],'go-',label='Original P70',alpha=0.7)
+    ax_twin.plot(df['timestamp'],df['output_len_p90'],'ro-',label='Original P90',alpha=0.7)
+    ax_twin.plot(df['timestamp'],df['output_len_p99'],'mo-',label='Original P99',alpha=0.7)
+    gen_output=np.array(generated_data['output_token_len_dist'])
+    ax_twin.plot(timestamps,gen_output,'k-',label='Generated',alpha=0.3)
+    output_percentiles,output_timestamps=calculate_percentiles(gen_output,window, timestamps)
+    if len(output_percentiles)>0:
+        ax.plot(output_timestamps,output_percentiles[:,0],'bx-.',label='Generated P50',alpha=0.7)
+        ax_twin.plot(output_timestamps,output_percentiles[:,1],'gx-.',label='Generated P70',alpha=0.7)
+        ax_twin.plot(output_timestamps,output_percentiles[:,2],'rx-.',label='Generated P90',alpha=0.7)
+        ax_twin.plot(output_timestamps,output_percentiles[:,3],'mx-.',label='Generated P99',alpha=0.7)
+    ax.set_title('Output Length Distribution Comparison')
+    ax.set_ylabel('Token Length')
+    ax.legend(loc='upper left')
+    ax_twin.legend(loc='upper right')
+    ax.grid(True)
+    ax.set_ylim(bottom=0)
+    ax_twin.set_ylim(bottom=0)
+
+    ax=axs[2]
+    ax.plot(df['timestamp'],df['qps_success'],'bo-',label='Original QPS',alpha=0.7)
+    gen_rps=np.array(generated_data['rps_dist'])
+    ax.plot(timestamps,gen_rps,'k-',label='Generated RPS',alpha=0.3)
+    rps_percentiles,rps_timestamps=calculate_percentiles(gen_rps,window, timestamps)
+    if len(rps_percentiles)>0:
+        ax.plot(rps_timestamps,rps_percentiles[:,0],'bx',label='Generated P50',alpha=0.7)
+    ax.set_title('RPS/QPS Distribution Comparison')
+    ax.set_ylabel('Requests per Second')
+    ax.legend(loc='upper left')
+    ax_twin.legend(loc='upper right')
+    ax.grid(True)
+    ax.set_ylim(bottom=0)
+    ax_twin.set_ylim(bottom=0)
+
+    for ax in axs:
+        ax.set_xlabel('Time')
+        plt.setp(ax.xaxis.get_majorticklabels(),rotation=45)
+        ax.margins(x=0.01)
+    plt.savefig(output_path,bbox_inches='tight',dpi=300)
+    plt.close()
+    print(f"** Saved to {output_path}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Workload Generator')
     parser.add_argument('--prompt-file', type=str, required=True, help='File containing prompts.')
-    parser.add_argument('--trace-type', type=str, required=True, choices=['constant','synthetic', 'internal', 'azure'],
+    parser.add_argument('--num-prompts', type=int, default=100, help='Number of prompts to sample.')
+    parser.add_argument('--trace-type', type=str, required=True, choices=['synthetic', 'internal', 'azure', 'synthetic-rps', 'synthetic-from-csv-file'],
                         help='Type of trace consumed. Choose among: synthetic, internal, azure')
+    
+    parser.add_argument('--stats-csv', type=str, required=False, default=None,)
+
     parser.add_argument('--traffic-file', type=str, required=False, default=None,
                         help='Traffic file containing times of arrival, which workload generator depends upon to '
                              'convert to traffic used in workload. This is only needed for for internal and azure trace type. ')
@@ -328,6 +740,8 @@ if __name__ == '__main__':
                         help='Set output data format to either .json or .jsonl (default is .json).')
     args = parser.parse_args()
 
+    workload_subname = f"{args.trace_type}-{args.stats_csv.split('/')[-1].split('.')[0]}"
+    print(f"Generating workload for {workload_subname}")
     # Generate workloads and pair with prompts
     workload_dict = {}
     tokenizer = get_tokenizer(pretrained_model_name_or_path=args.model, trust_remote_code=True)
@@ -359,6 +773,67 @@ if __name__ == '__main__':
         for scenario_name, params in scenarios.items():
             generated_workload = generate_synthetic(**params)
             workload_dict[scenario_name] = generated_workload
+    
+    elif args.trace_type == "synthetic-from-csv-file":
+        workload_dict = generate_workload_from_stats(
+            csv_path=args.stats_csv,
+            prompt_file=args.prompt_file,
+            output_dir=args.output_dir,
+            workload_subname=workload_subname,
+        )
+
+    elif args.trace_type == "synthetic-rps":
+        section_in_seconds = 300
+        rps_configs = [
+            {"mean_rps": 30, "amplitude": 10, "period": 60, "total_seconds": section_in_seconds},
+            {"mean_rps": 50, "amplitude": 10, "period": 60, "total_seconds": section_in_seconds},
+        ]
+        input_len_configs = [
+            {"mean_len": 5000, "amplitude": 200, "std": 0.5, "period": 60, "total_seconds": section_in_seconds},
+            {"mean_len": 4000, "amplitude": 200, "std": 0.5, "period": 60, "total_seconds": section_in_seconds},
+        ]
+        output_len_configs = [
+            {"mean_len": 500, "amplitude": 200, "std": 0.5, "period": 60, "total_seconds": section_in_seconds},
+            {"mean_len": 1000, "amplitude": 200, "std": 1, "period": 60, "total_seconds": section_in_seconds},
+        ]
+        input_len_dist = []
+        output_len_dist = []
+        rps_dist = []
+        for config in input_len_configs:
+            input_segment = generate_token_len_dist(**config)
+            input_len_dist.extend(input_segment)
+        for config in output_len_configs:
+            output_segment = generate_token_len_dist(**config)
+            output_len_dist.extend(output_segment)
+        for config in rps_configs:
+            rps_segment = generate_sine_rps_dist(**config)
+            rps_dist.extend(rps_segment)
+            
+        scenarios = {
+            'test-scenario-1': {
+                'rps_dist': rps_dist,
+                'input_token_len_dist': input_len_dist,
+                'output_token_len_dist': output_len_dist,
+            }
+        }
+        
+        for scenario_name, scenario in scenarios.items():
+            generated_workload = generate_synthetic_rps(
+                args.prompt_file,
+                scenario['rps_dist'],
+                scenario['input_token_len_dist'],
+                scenario['output_token_len_dist'],
+            )
+            if not os.path.exists(f"{args.output_dir}"):
+                os.makedirs(f"{args.output_dir}")
+            generated_workload_fn = f"{args.output_dir}/generated_workload-{workload_subname}.jsonl"
+            with open(generated_workload_fn, 'w') as f:
+                for req in generated_workload:
+                    json.dump(req, f, cls=RequestEncoder)
+                    f.write('\n')
+                print(f"Saved generated workload to {generated_workload_fn}")
+                
+            workload_dict[scenario_name] = generated_workload
     else:
         # Process for 'internal' and 'azure'
         if args.trace_type == "internal":
@@ -387,4 +862,5 @@ if __name__ == '__main__':
 
     if workload_dict:
         # Plot the workloads
-        plot_workload(workload_dict, interval_ms=args.interval_ms, output_file=f"{args.output_dir}/{args.trace_type}")
+        # plot_workload(workload_dict, interval_ms=args.interval_ms, output_file=f"plot/{args.trace_type}.pdf")
+        plot_rps_workload(workload_dict, output_file=f"{args.output_dir}/plot-{workload_subname}.pdf")
