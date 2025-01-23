@@ -12,11 +12,11 @@ patches:
 
 images:
 - name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/plugins
-  newTag: 
+  newTag: ${TAG}
 - name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/users
-  newTag: 
+  newTag: ${TAG}
 - name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/controller-manager
-  newTag: 
+  newTag: ${TAG}
 - name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/runtime
-  newTag: 
+  newTag: ${TAG}
 
