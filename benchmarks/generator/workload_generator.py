@@ -714,7 +714,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Workload Generator')
     parser.add_argument('--prompt-file', type=str, required=True, help='File containing prompts.')
     parser.add_argument('--num-prompts', type=int, default=100, help='Number of prompts to sample.')
-    parser.add_argument('--trace-type', type=str, required=True, choices=['synthetic', 'internal', 'azure', 'synthetic-rps', 'synthetic-from-csv-file'],
+    parser.add_argument('--trace-type', type=str, required=True, choices=['constant', 'synthetic', 'internal', 'azure', 'synthetic-rps', 'synthetic-from-csv-file'],
                         help='Type of trace consumed. Choose among: synthetic, internal, azure')
     
     parser.add_argument('--stats-csv', type=str, required=False, default=None,)
@@ -740,12 +740,10 @@ if __name__ == '__main__':
                         help='Set output data format to either .json or .jsonl (default is .json).')
     args = parser.parse_args()
 
-    workload_subname = f"{args.trace_type}-{args.stats_csv.split('/')[-1].split('.')[0]}"
-    print(f"Generating workload for {workload_subname}")
     # Generate workloads and pair with prompts
     workload_dict = {}
     tokenizer = get_tokenizer(pretrained_model_name_or_path=args.model, trust_remote_code=True)
-
+    workload_subname = None
     if args.trace_type == "constant":
         generated_workload = generate_constant(prompt_file_path=args.prompt_file, 
                                                 qps=1,
@@ -774,7 +772,11 @@ if __name__ == '__main__':
             generated_workload = generate_synthetic(**params)
             workload_dict[scenario_name] = generated_workload
     
+    
+    
     elif args.trace_type == "synthetic-from-csv-file":
+        workload_subname = f"{args.trace_type}-{args.stats_csv.split('/')[-1].split('.')[0]}"
+        print(f"Generating workload for {workload_subname}")
         workload_dict = generate_workload_from_stats(
             csv_path=args.stats_csv,
             prompt_file=args.prompt_file,
@@ -783,6 +785,8 @@ if __name__ == '__main__':
         )
 
     elif args.trace_type == "synthetic-rps":
+        workload_subname = f"{args.trace_type}-{args.stats_csv.split('/')[-1].split('.')[0]}"
+        print(f"Generating workload for {workload_subname}")
         section_in_seconds = 300
         rps_configs = [
             {"mean_rps": 30, "amplitude": 10, "period": 60, "total_seconds": section_in_seconds},
@@ -834,9 +838,7 @@ if __name__ == '__main__':
                 print(f"Saved generated workload to {generated_workload_fn}")
                 
             workload_dict[scenario_name] = generated_workload
-    else:
-        # Process for 'internal' and 'azure'
-        if args.trace_type == "internal":
+    elif args.trace_type == "internal":
             generated_workload = generate_from_internal_csv(file_path=args.traffic_file, 
                                                             prompt_file_path=args.prompt_file, 
                                                             duration_ms=args.duration_ms, 
@@ -848,19 +850,22 @@ if __name__ == '__main__':
                                                             to_jsonl=(args.output_format == "jsonl"),
                                                             )
 
-        elif args.trace_type == "azure":
-            generated_workload = generate_from_azure_csv(file_path=args.traffic_file, 
-                                                         prompt_file_path=args.prompt_file,
-                                                         duration_ms=args.duration_ms, 
-                                                         tokenizer=tokenizer,
-                                                         interval_ms=args.interval_ms, 
-                                                         output_file=f"{args.output_dir}/{args.trace_type}",
-                                                         to_jsonl=(args.output_format == "jsonl"),
-                                                         )
+    elif args.trace_type == "azure":
+        generated_workload = generate_from_azure_csv(file_path=args.traffic_file, 
+                                                        prompt_file_path=args.prompt_file,
+                                                        duration_ms=args.duration_ms, 
+                                                        tokenizer=tokenizer,
+                                                        interval_ms=args.interval_ms, 
+                                                        output_file=f"{args.output_dir}/{args.trace_type}",
+                                                        to_jsonl=(args.output_format == "jsonl"),
+                                                        )
 
-        workload_dict[args.trace_type] = generated_workload
+    workload_dict[args.trace_type] = generated_workload
 
     if workload_dict:
         # Plot the workloads
         # plot_workload(workload_dict, interval_ms=args.interval_ms, output_file=f"plot/{args.trace_type}.pdf")
-        plot_rps_workload(workload_dict, output_file=f"{args.output_dir}/plot-{workload_subname}.pdf")
+        if workload_subname:
+            plot_rps_workload(workload_dict, output_file=f"{args.output_dir}/plot-{workload_subname}.pdf")
+        else:
+            plot_workload(workload_dict, interval_ms=args.interval_ms, output_file=f"plot/{args.trace_type}")
