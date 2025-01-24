@@ -1,0 +1,21 @@
+Performance Statistics:
+=====================
+
+Sample Count: 788
+Average Latency: 145.149
+Latency P50: 134.953
+Latency P90: 236.479
+Latency P95: 249.002
+Latency P99: 320.830
+Latency Std Dev: 86.895
+Min Latency: 1.645
+Max Latency: 338.709
+Average RPS: 40.353
+Success RPS: 32.457
+Failed RPS: 7.896
+Total Tokens (avg): 1,024.3
+Prompt Tokens (avg): 825.3
+Output Tokens (avg): 199.0
+Total Num Requests: 788.000
+Successful Num Requests: 614.000
+Failed Num Requests: 174.000
