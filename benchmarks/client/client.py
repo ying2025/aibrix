@@ -10,7 +10,7 @@ from utils import (load_workload, wrap_prompt_as_chat_message)
 
 
 # Asynchronous request handler
-async def send_request(client, model, endpoint, prompt, output_file, completion_map, batch_id=-1, request_id=-1):
+async def send_request(client, model, prompt, output_file, completion_map, batch_id=-1, request_id=-1):
     start_time = asyncio.get_event_loop().time()
     try:
         response = await client.chat.completions.create(
@@ -51,16 +51,11 @@ async def send_request(client, model, endpoint, prompt, output_file, completion_
         print(f"Total sent requests so far: {len(completion_map)}, completed requests: {sum(completion_map.values())}, completion_ratio: {sum(completion_map.values()) / len(completion_map)}")
         return result
     except Exception as e:
-        logging.error(f"Error sending request to at {endpoint}: {str(e)}")
+        logging.error(f"Error sending request to at {client}: {str(e)}")
         return None
 
 
-async def new_benchmark_prescheduling2(endpoint, model, api_key, workload_path, output_file_path, minimum_time_unit=500):
-    # async def new_benchmark(endpoint, model, api_key, workload_path, output_file_path, minimum_time_unit=500):
-    client = openai.AsyncOpenAI(
-        api_key=api_key,
-        base_url=endpoint + "/v1",
-    )
+async def new_benchmark_prescheduling2(client, model, workload_path, output_file_path, minimum_time_unit=500):
     print(f"Writing output to {output_file_path}")
     
     # Load workload
@@ -89,11 +84,6 @@ async def new_benchmark_prescheduling2(endpoint, model, api_key, workload_path, 
             }
             f.write(json.dumps(entry) + '\n')
     print(f"Written collapsed workload to {collapsed_workload_path}")
-    
-    print("expected load")
-    for ts, requests in collapsed_requests.items():
-        print(f"{ts}: {len(requests)}")
-
     # Execute the benchmark
     base_time = time.time()
     num_requests = 0
@@ -124,11 +114,11 @@ async def new_benchmark_prescheduling2(endpoint, model, api_key, workload_path, 
                     logging.warning(f"Sending batch {batch_num} with {len(formatted_prompts)} requests at {(time.time()-base_time):.2f}s (behind by {-sleep_duration:.2f}s)")
                 
                 # Create tasks for each request in the batch but don't await them
-                # batch_tasks = [asyncio.create_task(send_request(client, model, endpoint, wrap_prompt_as_chat_message(prompt), output_file)) for prompt in formatted_prompts]
+                # batch_tasks = [asyncio.create_task(send_request(client, model, wrap_prompt_as_chat_message(prompt), output_file)) for prompt in formatted_prompts]
                 batch_tasks = []
                 for prompt in formatted_prompts:
                     completion_map[request_id] = 0
-                    batch_tasks.append(asyncio.create_task(send_request(client, model, endpoint, wrap_prompt_as_chat_message(prompt), output_file, completion_map, batch_num, request_id)))
+                    batch_tasks.append(asyncio.create_task(send_request(client, model, wrap_prompt_as_chat_message(prompt), output_file, completion_map, batch_num, request_id)))
                     request_id += 1
                 all_tasks.extend(batch_tasks)
                 num_requests_sent += len(formatted_prompts)
@@ -143,11 +133,7 @@ async def new_benchmark_prescheduling2(endpoint, model, api_key, workload_path, 
             logging.error(f"Benchmark failed: {str(e)}")
             raise
 
-async def new_benchmark_prescheduling(endpoint, model, api_key, workload_path, output_file_path, minimum_time_unit=500):
-    client = openai.AsyncOpenAI(
-        api_key=api_key,
-        base_url=endpoint + "/v1",
-    )
+async def new_benchmark_prescheduling(model, workload_path, output_file_path, minimum_time_unit=500):
     print(f"Writing output to {output_file_path}")
     
     # Load workload
@@ -185,7 +171,7 @@ async def new_benchmark_prescheduling(endpoint, model, api_key, workload_path, o
     async def execute_batch_requests(prompts, output_file):
         """Execute all requests in a batch concurrently"""
         return await asyncio.gather(*[
-            send_request(client, model, endpoint, wrap_prompt_as_chat_message(prompt), output_file)
+            send_request(client, model, wrap_prompt_as_chat_message(prompt), output_file)
             for prompt in prompts
         ])
 
@@ -228,11 +214,7 @@ async def new_benchmark_prescheduling(endpoint, model, api_key, workload_path, o
 
 ## NOTE (gangmuk): This modified original benchmark function to minimize the time drifting but it is essentially impossible to do correctly it in this way. This is highly inefficient as well as it is utilizing the single thread only.
 ## The current update added more correct way to track time including time drifting due to request dispatching overhead. It is still best effort not the best by design as long as it is not hihgly effficient. (multi-thread, sharing tcp connection, etc.)
-async def new_benchmark(endpoint, model, api_key, workload_path, output_file_path, minimum_time_unit=500):
-    client = openai.AsyncOpenAI(
-        api_key=api_key,
-        base_url=endpoint + "/v1",
-    )
+async def new_benchmark(client, model, workload_path, output_file_path, minimum_time_unit=500):
     print(f"Writing output to {output_file_path}")
     load_struct = load_workload(workload_path)
     collapsed_requests = {}
@@ -280,7 +262,7 @@ async def new_benchmark(endpoint, model, api_key, workload_path, output_file_pat
                 logging.warning(f"Behind schedule by {behind_schedule:.2f}s, launching {len(formatted_prompts)} tasks at {(time.time()-base_time):.2f}s")
             batch_tasks = [
                 asyncio.create_task(
-                    send_request(client, model, endpoint, prompt, output_file)
+                    send_request(client, model, prompt, output_file)
                 )
                 for prompt in formatted_prompts
             ]
@@ -292,11 +274,7 @@ async def new_benchmark(endpoint, model, api_key, workload_path, output_file_pat
         logging.warning(f"Completed {num_requests} requests in {total_time:.2f}s (actual QPS: {actual_qps:.2f})")
 
 ## Old
-async def benchmark(endpoint, model, api_key, workload_path, output_file_path):
-    client = openai.AsyncOpenAI(
-        api_key=api_key,
-        base_url=endpoint + "/v1",
-    )
+async def benchmark(client, model, workload_path, output_file_path):
     print(f"Writing output to {output_file_path}")
     load_struct = load_workload(workload_path)
     with open(output_file_path, 'a', encoding='utf-8') as output_file:
@@ -318,7 +296,7 @@ async def benchmark(endpoint, model, api_key, workload_path, output_file_path):
             print(f"batch idx: {idx}, num_requests: {len(formatted_prompts)}, time: {time.time()-base_time:.2f}s")
             for formatted_prompt in formatted_prompts:
                 task = asyncio.create_task(
-                    send_request(client, model, endpoint, formatted_prompt, output_file)
+                    send_request(client, model, formatted_prompt, output_file)
                 )
                 batch_tasks.append(task)
             num_requests += len(requests)
@@ -328,11 +306,17 @@ async def benchmark(endpoint, model, api_key, workload_path, output_file_path):
 
 def main(args):
     logging.info(f"Starting benchmark on endpoint {args.endpoint}")
+    client = openai.AsyncOpenAI(
+        api_key=args.api_key,
+        base_url=args.endpoint + "/v1",
+    )
+    if args.routing_strategy is not None:
+        client.default_headers["routing-strategy"] = args.routing_strategy
     start_time = time.time()
-    # asyncio.run(benchmark(args.endpoint, args.model, args.api_key, args.workload_path, args.output_file_path))
-    # asyncio.run(new_benchmark(args.endpoint, args.model, args.api_key, args.workload_path, args.output_file_path))
-    # asyncio.run(new_benchmark_prescheduling(args.endpoint, args.model, args.api_key, args.workload_path, args.output_file_path))
-    asyncio.run(new_benchmark_prescheduling2(args.endpoint, args.model, args.api_key, args.workload_path, args.output_file_path))
+    # asyncio.run(benchmark(client, args.model, args.workload_path, args.output_file_path))
+    # asyncio.run(new_benchmark(client, args.model, args.workload_path, args.output_file_path))
+    # asyncio.run(new_benchmark_prescheduling(client, args.model, args.workload_path, args.output_file_path))
+    asyncio.run(new_benchmark_prescheduling2(client, args.model, args.workload_path, args.output_file_path))
     end_time = time.time()
     logging.info(f"Benchmark completed in {end_time - start_time:.2f} seconds")
 
@@ -344,6 +328,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, required=True, help="Name of the model.")
     parser.add_argument("--api-key", type=str, required=True, help="API key to the service. ")
     parser.add_argument('--output-file-path', type=str, default="output.jsonl")
+    parser.add_argument('--routing-strategy', type=str, required=False, default=None, help="Routing strategy to the requests.")
 
     args = parser.parse_args()
     main(args)
