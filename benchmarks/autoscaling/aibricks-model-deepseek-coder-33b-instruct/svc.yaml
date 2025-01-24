@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8000"
+    prometheus.io/scrape: "true"
+    service.beta.kubernetes.io/system-volcengine-loadbalancer-create-response-id: clb-mj4b03823k005smt1bcco8kc
+    service.beta.kubernetes.io/system-volcengine-loadbalancer-last-applied-annotations: '{"service.beta.kubernetes.io/volcengine-loadbalancer-address-type":"PUBLIC","service.beta.kubernetes.io/volcengine-loadbalancer-bandwidth":"1","service.beta.kubernetes.io/volcengine-loadbalancer-billing-type":"2","service.beta.kubernetes.io/volcengine-loadbalancer-eip-billing-type":"3","service.beta.kubernetes.io/volcengine-loadbalancer-health-check-flag":"off","service.beta.kubernetes.io/volcengine-loadbalancer-isp-type":"BGP","service.beta.kubernetes.io/volcengine-loadbalancer-master-zone-id":"cn-beijing-a","service.beta.kubernetes.io/volcengine-loadbalancer-name":"k8s-25c9ff288c994b0ca71002914a2d947a","service.beta.kubernetes.io/volcengine-loadbalancer-pass-through":"false","service.beta.kubernetes.io/volcengine-loadbalancer-scheduler":"wrr","service.beta.kubernetes.io/volcengine-loadbalancer-slave-zone-id":"cn-beijing-b","service.beta.kubernetes.io/volcengine-loadbalancer-spec":"small_1","service.beta.kubernetes.io/volcengine-loadbalancer-subnet-id":"subnet-13g4o2wfma1vk3n6nu5a7wezg"}'
+    service.beta.kubernetes.io/volcengine-loadbalancer-address-type: PUBLIC
+    service.beta.kubernetes.io/volcengine-loadbalancer-bandwidth: "1"
+    service.beta.kubernetes.io/volcengine-loadbalancer-billing-type: "2"
+    service.beta.kubernetes.io/volcengine-loadbalancer-eip-billing-type: "3"
+    service.beta.kubernetes.io/volcengine-loadbalancer-health-check-flag: "off"
+    service.beta.kubernetes.io/volcengine-loadbalancer-isp-type: BGP
+    service.beta.kubernetes.io/volcengine-loadbalancer-master-zone-id: cn-beijing-a
+    service.beta.kubernetes.io/volcengine-loadbalancer-name: k8s-25c9ff288c994b0ca71002914a2d947a
+    service.beta.kubernetes.io/volcengine-loadbalancer-pass-through: "false"
+    service.beta.kubernetes.io/volcengine-loadbalancer-scheduler: wrr
+    service.beta.kubernetes.io/volcengine-loadbalancer-slave-zone-id: cn-beijing-b
+    service.beta.kubernetes.io/volcengine-loadbalancer-spec: small_1
+    service.beta.kubernetes.io/volcengine-loadbalancer-subnet-id: subnet-13g4o2wfma1vk3n6nu5a7wezg
+  creationTimestamp: "2024-08-29T08:06:07Z"
+  finalizers:
+  - service.kubernetes.io/load-balancer-cleanup
+  labels:
+    models.aibricks.ai: deepseek-coder-33b-instruct
+    prometheus-discovery: "true"
+    service.beta.kubernetes.io/volcengine-loadbalancer-id: clb-mj4b03823k005smt1bcco8kc
+  name: aibricks-model-deepseek-coder-33b-instruct
+  namespace: default
+  resourceVersion: "89505633"
+  uid: 25c9ff28-8c99-4b0c-a710-02914a2d947a
+spec:
+  allocateLoadBalancerNodePorts: true
+  clusterIP: 192.168.95.100
+  clusterIPs:
+  - 192.168.95.100
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: serve
+    nodePort: 32306
+    port: 8000
+    protocol: TCP
+    targetPort: 8000
+  selector:
+    models.aibricks.ai: deepseek-coder-33b-instruct
+  sessionAffinity: None
+  type: LoadBalancer
+status:
+  loadBalancer:
+    ingress:
+    - ip: 101.126.30.95

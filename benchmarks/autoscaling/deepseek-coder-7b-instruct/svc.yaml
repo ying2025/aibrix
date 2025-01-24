@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{"prometheus.io/port":"8000","prometheus.io/scrape":"true"},"labels":{"model.aibrix.ai/name":"deepseek-coder-7b-instruct","prometheus-discovery":"true"},"name":"deepseek-coder-7b-instruct","namespace":"default"},"spec":{"ports":[{"name":"serve","port":8000,"protocol":"TCP","targetPort":8000}],"selector":{"model.aibrix.ai/name":"deepseek-coder-7b-instruct"},"type":"LoadBalancer"}}
+    prometheus.io/port: "8000"
+    prometheus.io/scrape: "true"
+    service.beta.kubernetes.io/system-volcengine-loadbalancer-create-response-id: clb-mimlqfem88ao5smt1b6phsu9
+    service.beta.kubernetes.io/system-volcengine-loadbalancer-last-applied-annotations: '{"service.beta.kubernetes.io/volcengine-loadbalancer-address-type":"PUBLIC","service.beta.kubernetes.io/volcengine-loadbalancer-bandwidth":"1","service.beta.kubernetes.io/volcengine-loadbalancer-billing-type":"2","service.beta.kubernetes.io/volcengine-loadbalancer-eip-billing-type":"3","service.beta.kubernetes.io/volcengine-loadbalancer-health-check-flag":"off","service.beta.kubernetes.io/volcengine-loadbalancer-isp-type":"BGP","service.beta.kubernetes.io/volcengine-loadbalancer-master-zone-id":"cn-beijing-c","service.beta.kubernetes.io/volcengine-loadbalancer-name":"k8s-f50bbab1f13142b2a650c8e82e68b0ec","service.beta.kubernetes.io/volcengine-loadbalancer-pass-through":"false","service.beta.kubernetes.io/volcengine-loadbalancer-scheduler":"wrr","service.beta.kubernetes.io/volcengine-loadbalancer-slave-zone-id":"cn-beijing-b","service.beta.kubernetes.io/volcengine-loadbalancer-spec":"small_1","service.beta.kubernetes.io/volcengine-loadbalancer-subnet-id":"subnet-rr5b2ti1aps0v0x58yzlrtd"}'
+    service.beta.kubernetes.io/volcengine-loadbalancer-address-type: PUBLIC
+    service.beta.kubernetes.io/volcengine-loadbalancer-bandwidth: "1"
+    service.beta.kubernetes.io/volcengine-loadbalancer-billing-type: "2"
+    service.beta.kubernetes.io/volcengine-loadbalancer-eip-billing-type: "3"
+    service.beta.kubernetes.io/volcengine-loadbalancer-health-check-flag: "off"
+    service.beta.kubernetes.io/volcengine-loadbalancer-isp-type: BGP
+    service.beta.kubernetes.io/volcengine-loadbalancer-master-zone-id: cn-beijing-c
+    service.beta.kubernetes.io/volcengine-loadbalancer-name: k8s-f50bbab1f13142b2a650c8e82e68b0ec
+    service.beta.kubernetes.io/volcengine-loadbalancer-pass-through: "false"
+    service.beta.kubernetes.io/volcengine-loadbalancer-scheduler: wrr
+    service.beta.kubernetes.io/volcengine-loadbalancer-slave-zone-id: cn-beijing-b
+    service.beta.kubernetes.io/volcengine-loadbalancer-spec: small_1
+    service.beta.kubernetes.io/volcengine-loadbalancer-subnet-id: subnet-rr5b2ti1aps0v0x58yzlrtd
+  creationTimestamp: "2025-01-13T18:04:48Z"
+  finalizers:
+  - service.kubernetes.io/load-balancer-cleanup
+  labels:
+    model.aibrix.ai/name: deepseek-coder-7b-instruct
+    prometheus-discovery: "true"
+    service.beta.kubernetes.io/volcengine-loadbalancer-id: clb-mimlqfem88ao5smt1b6phsu9
+  name: deepseek-coder-7b-instruct
+  namespace: default
+  resourceVersion: "94588720"
+  uid: f50bbab1-f131-42b2-a650-c8e82e68b0ec
+spec:
+  allocateLoadBalancerNodePorts: true
+  clusterIP: 192.168.93.12
+  clusterIPs:
+  - 192.168.93.12
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: serve
+    nodePort: 31987
+    port: 8000
+    protocol: TCP
+    targetPort: 8000
+  selector:
+    model.aibrix.ai/name: deepseek-coder-7b-instruct
+  sessionAffinity: None
+  type: LoadBalancer
+status:
+  loadBalancer:
+    ingress:
+    - ip: 101.126.74.79

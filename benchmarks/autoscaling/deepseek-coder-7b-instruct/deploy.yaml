@@ -1,0 +1,213 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "12"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"model.aibrix.ai/name":"deepseek-coder-7b-instruct","model.aibrix.ai/port":"8000"},"name":"aibrix-model-deepseek-coder-7b-instruct","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"model.aibrix.ai/name":"deepseek-coder-7b-instruct"}},"strategy":{"type":"Recreate"},"template":{"metadata":{"annotations":{"prometheus.io/path":"/metrics","prometheus.io/port":"8000","prometheus.io/scrape":"true"},"labels":{"model.aibrix.ai/name":"deepseek-coder-7b-instruct"}},"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"machine.cluster.vke.volcengine.com/gpu-name","operator":"In","values":["NVIDIA-L20"]}]}]}}},"containers":[{"command":["python3","-m","vllm.entrypoints.openai.api_server","--host","0.0.0.0","--port","8000","--model","/models/deepseek-coder-6.7b-instruct","--served-model-name","deepseek-coder-7b-instruct","--trust-remote-code","--max-model-len","10240","--api-key","sk-kFJ12nKsFVfVmGpj3QzX65s4RbN2xJqWzPYCjYu7wT3BlbLi","--disable-fastapi-docs"],"image":"aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/vllm-openai:v0.6.2-distributed","imagePullPolicy":"Always","livenessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":8000,"scheme":"HTTP"},"initialDelaySeconds":90,"periodSeconds":5,"successThreshold":1,"timeoutSeconds":1},"name":"vllm-openai","ports":[{"containerPort":8000,"protocol":"TCP"}],"readinessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":8000,"scheme":"HTTP"},"initialDelaySeconds":90,"periodSeconds":5,"successThreshold":1,"timeoutSeconds":1},"resources":{"limits":{"nvidia.com/gpu":"1"},"requests":{"nvidia.com/gpu":"1"}},"volumeMounts":[{"mountPath":"/models","name":"model-hostpath"},{"mountPath":"/dev/shm","name":"dshm"}]},{"command":["aibrix_runtime","--port","8080"],"env":[{"name":"INFERENCE_ENGINE","value":"vllm"},{"name":"INFERENCE_ENGINE_ENDPOINT","value":"http://localhost:8000"}],"image":"aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/runtime:v0.2.0-rc.1","livenessProbe":{"httpGet":{"path":"/healthz","port":8080},"initialDelaySeconds":3,"periodSeconds":2},"name":"aibrix-runtime","ports":[{"containerPort":8080,"protocol":"TCP"}],"readinessProbe":{"httpGet":{"path":"/ready","port":8080},"initialDelaySeconds":5,"periodSeconds":10},"volumeMounts":[{"mountPath":"/models","name":"model-hostpath"}]}],"initContainers":[{"command":["aibrix_download","--model-uri","tos://aibrix-artifact-testing/models/deepseek-ai/deepseek-coder-6.7b-instruct/","--local-dir","/models/"],"env":[{"name":"DOWNLOADER_MODEL_NAME","value":"deepseek-coder-6.7b-instruct"},{"name":"DOWNLOADER_NUM_THREADS","value":"16"},{"name":"DOWNLOADER_ALLOW_FILE_SUFFIX","value":"json, safetensors"},{"name":"TOS_ACCESS_KEY","valueFrom":{"secretKeyRef":{"key":"TOS_ACCESS_KEY","name":"tos-credential"}}},{"name":"TOS_SECRET_KEY","valueFrom":{"secretKeyRef":{"key":"TOS_SECRET_KEY","name":"tos-credential"}}},{"name":"TOS_ENDPOINT","value":"tos-cn-beijing.ivolces.com"},{"name":"TOS_REGION","value":"cn-beijing"}],"image":"aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/runtime:v0.1.1","name":"init-model","volumeMounts":[{"mountPath":"/models","name":"model-hostpath"}]}],"volumes":[{"hostPath":{"path":"/root/models","type":"DirectoryOrCreate"},"name":"model-hostpath"},{"emptyDir":{"medium":"Memory","sizeLimit":"4Gi"},"name":"dshm"}]}}}}
+  creationTimestamp: "2025-01-13T18:04:47Z"
+  generation: 254
+  labels:
+    model.aibrix.ai/name: deepseek-coder-7b-instruct
+    model.aibrix.ai/port: "8000"
+  name: aibrix-model-deepseek-coder-7b-instruct
+  namespace: default
+  resourceVersion: "102184629"
+  uid: e64caf4e-b0a1-47bc-aed8-a24a17bda9ce
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 3
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      model.aibrix.ai/name: deepseek-coder-7b-instruct
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2025-01-22T12:55:45-08:00"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8000"
+        prometheus.io/scrape: "true"
+      creationTimestamp: null
+      labels:
+        model.aibrix.ai/name: deepseek-coder-7b-instruct
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: machine.cluster.vke.volcengine.com/gpu-name
+                operator: In
+                values:
+                - NVIDIA-L20
+      containers:
+      - command:
+        - python3
+        - -m
+        - vllm.entrypoints.openai.api_server
+        - --host
+        - 0.0.0.0
+        - --port
+        - "8000"
+        - --model
+        - /models/deepseek-coder-6.7b-instruct
+        - --served-model-name
+        - deepseek-coder-7b-instruct
+        - --trust-remote-code
+        - --max-model-len
+        - "10240"
+        - --api-key
+        - sk-kFJ12nKsFVfVmGpj3QzX65s4RbN2xJqWzPYCjYu7wT3BlbLi
+        - --disable-fastapi-docs
+        image: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/vllm-openai:v0.6.2-distributed
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 90
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: vllm-openai
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 90
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            nvidia.com/gpu: "1"
+          requests:
+            nvidia.com/gpu: "1"
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /models
+          name: model-hostpath
+        - mountPath: /dev/shm
+          name: dshm
+      - command:
+        - aibrix_runtime
+        - --port
+        - "8080"
+        env:
+        - name: INFERENCE_ENGINE
+          value: vllm
+        - name: INFERENCE_ENGINE_ENDPOINT
+          value: http://localhost:8000
+        image: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/runtime:v0.2.0-rc.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 3
+          periodSeconds: 2
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: aibrix-runtime
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ready
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /models
+          name: model-hostpath
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - command:
+        - aibrix_download
+        - --model-uri
+        - tos://aibrix-artifact-testing/models/deepseek-ai/deepseek-coder-6.7b-instruct/
+        - --local-dir
+        - /models/
+        env:
+        - name: DOWNLOADER_MODEL_NAME
+          value: deepseek-coder-6.7b-instruct
+        - name: DOWNLOADER_NUM_THREADS
+          value: "16"
+        - name: DOWNLOADER_ALLOW_FILE_SUFFIX
+          value: json, safetensors
+        - name: TOS_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              key: TOS_ACCESS_KEY
+              name: tos-credential
+        - name: TOS_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              key: TOS_SECRET_KEY
+              name: tos-credential
+        - name: TOS_ENDPOINT
+          value: https://tos-s3-cn-beijing.ivolces.com
+        - name: TOS_REGION
+          value: cn-beijing
+        image: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/runtime:v0.2.0-rc.1
+        imagePullPolicy: IfNotPresent
+        name: init-model
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /models
+          name: model-hostpath
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - hostPath:
+          path: /root/models
+          type: DirectoryOrCreate
+        name: model-hostpath
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 4Gi
+        name: dshm
+status:
+  conditions:
+  - lastTransitionTime: "2025-01-22T20:55:26Z"
+    lastUpdateTime: "2025-01-22T20:55:26Z"
+    message: Deployment does not have minimum availability.
+    reason: MinimumReplicasUnavailable
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2025-01-22T22:23:24Z"
+    lastUpdateTime: "2025-01-22T22:23:24Z"
+    message: ReplicaSet "aibrix-model-deepseek-coder-7b-instruct-7c99c985b4" has timed
+      out progressing.
+    reason: ProgressDeadlineExceeded
+    status: "False"
+    type: Progressing
+  observedGeneration: 254
+  replicas: 3
+  unavailableReplicas: 3
+  updatedReplicas: 3
