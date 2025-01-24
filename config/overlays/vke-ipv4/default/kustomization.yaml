@@ -11,12 +11,13 @@ patches:
     name: aibrix-custom-proxy-config
 
 images:
-- name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/plugins
-  newTag: 
+- name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/gateway-plugins
+  newTag: paper
 - name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/users
-  newTag: 
+  newTag: paper
 - name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/controller-manager
-  newTag: 
+  newTag: paper
 - name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/runtime
-  newTag: 
-
+  newTag: paper
+- name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/metadata-service
+  newTag: paper

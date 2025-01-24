@@ -21,11 +21,11 @@ images:
 - name: redis
   newName: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/redis
   newTag: latest
-- name: aibrix/plugins
-  newName: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/plugins
+- name: aibrix/gateway-plugins
+  newName: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/gateway-plugins
   newTag: v0.1.1
-- name: aibrix/users
-  newName: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/users
+- name: aibrix/metadata-service
+  newName: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/metadata-service
   newTag: v0.1.1
 - name: aibrix/controller-manager
   newName: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/controller-manager

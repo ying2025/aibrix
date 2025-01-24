@@ -1,9 +1,9 @@
 #!/bin/bash
 set +x
-TAG="paper"
-AIBRIX_DIR=/root/aibrix
+export TAG="paper"
+AIBRIX_DIR=/Users/bytedance/Documents/Work/aibrix
 DEPLOYMENT_PATH=$AIBRIX_DIR/config/overlays/vke-ipv4/default/kustomization.yaml 
-export KUBECONFIG=/root/.kube/config-vke
+# export KUBECONFIG=/root/.kube/config-vke
 envsubst < kustomization.yaml.template > $DEPLOYMENT_PATH
 
 cd $AIBRIX_DIR

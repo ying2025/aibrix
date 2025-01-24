@@ -11,7 +11,7 @@ patches:
     name: aibrix-custom-proxy-config
 
 images:
-- name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/plugins
+- name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/gateway-plugins
   newTag: ${TAG}
 - name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/users
   newTag: ${TAG}
@@ -19,4 +19,5 @@ images:
   newTag: ${TAG}
 - name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/runtime
   newTag: ${TAG}
-
+- name: aibrix-container-registry-cn-beijing.cr.volces.com/aibrix/metadata-service
+  newTag: ${TAG}
