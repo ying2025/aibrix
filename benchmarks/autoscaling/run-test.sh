@@ -1,16 +1,20 @@
 #!/bin/bash
 
-api_key=""
+input_workload_path=$1
+aibrix_repo="/Users/bytedance/projects/aibrix"
+api_key="sk-kFJ12nKsFVfVmGpj3QzX65s4RbN2xJqWzPYCjYu7wT3BlbLi"
+k8s_config_dir="deepseek-llm-7b-chat-v100"
+target_deployment="aibrix-model-deepseek-llm-7b-chat"
+
 if [ -z "$api_key" ]; then
     echo "API key is not set. Please set the API key in the script"
     exit 1
 fi
-
-input_workload_path=$1
 if [ -z "$input_workload_path" ]; then
     echo "Usage: $0 <workload-path>"
     exit 1
 fi
+
 workload_name=$(echo $input_workload_path | tr '/' '\n' | grep .jsonl | cut -d '.' -f 1)
 experiment_result_dir="experiment_results/${workload_name}-$(date +%Y%m%d-%H%M%S)"
 
@@ -26,8 +30,6 @@ echo "experiment_result_dir: $experiment_result_dir"
 ## port-forwarding
 kubectl -n envoy-gateway-system port-forward service/envoy-aibrix-system-aibrix-eg-903790dc  8888:80 &
 
-k8s_config_dir="deepseek-llm-7b-chat-v100"
-target_deployment="aibrix-model-deepseek-llm-7b-chat"
 # echo "**********************"
 # echo "* target_deployment: $target_deployment"
 # echo "* will start in 3 seconds. check if this deployment is what you want."
@@ -53,7 +55,7 @@ python count_num_pods.py ${target_deployment} ${experiment_result_dir} &
 COUNT_NUM_POD_PID=$!
 
 output_jsonl_path=${experiment_result_dir}/output.jsonl
-python3 /Users/bytedance/projects/serverless/aibrix-experiment/benchmarks/generator/client.py \
+python3 ${aibrix_repo}/benchmarks/generator/client.py \
     --workload-path ${input_workload_path} \
     --endpoint "localhost:8888" \
     --model deepseek-llm-7b-chat \
