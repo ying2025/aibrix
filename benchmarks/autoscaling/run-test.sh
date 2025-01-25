@@ -1,6 +1,6 @@
 #!/bin/bash
 
-api_key="sk-kFJ12nKsFVfVmGpj3QzX65s4RbN2xJqWzPYCjYu7wT3BlbLi"
+api_key=""
 if [ -z "$api_key" ]; then
     echo "API key is not set. Please set the API key in the script"
     exit 1
