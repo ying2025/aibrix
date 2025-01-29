@@ -124,6 +124,6 @@ def wait_for_all_pa_ready(namespace="default"):
 if __name__ == "__main__":
     target_deployment = sys.argv[1]
     config.load_kube_config(context="ccr3aths9g2gqedu8asdg@41073177-kcu0mslcp5mhjsva38rpg")
-    wait_for_all_pa_ready()
+    # wait_for_all_pa_ready()
     wait_for_pods_ready(target_deployment)
     print("All pods are ready")
