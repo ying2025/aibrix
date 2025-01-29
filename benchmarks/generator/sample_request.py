@@ -156,11 +156,10 @@ def sample_requests_len_range(
         num_requests: int,
         input_lens: List[int],
         output_lens: List[int],
-        initial_err_perc: Optional[float] = 0.5,
+        initial_err_perc: Optional[float] = 0.1,
         err_step: float = 0.05
 ) -> List[Tuple[str, int, int, None]]:
     filtered_results = []
-
     # Relaxation mechanism
     for i in range(num_requests):
         input_len = input_lens[i]
@@ -228,7 +227,7 @@ def sample_sharegpt_requests_len_range(df:pd.DataFrame,request,initial_err_perc:
     total_lens=df['prompt_len']+df['completion_len']
     length_ratios=df['prompt_len']/(df['completion_len'].replace(0,1))
     err_perc=initial_err_perc
-    while err_perc>=0:
+    while err_perc<1:
         input_range=[int(target_input_len*(1-err_perc)),int(target_input_len*(1+err_perc))]
         output_range=[int(target_output_len*(1-err_perc)),int(target_output_len*(1+err_perc))]
         mask=(df['prompt_len']>=input_range[0])&(df['prompt_len']<=input_range[1])&(df['completion_len']>=output_range[0])&(df['completion_len']<=output_range[1])
@@ -240,8 +239,8 @@ def sample_sharegpt_requests_len_range(df:pd.DataFrame,request,initial_err_perc:
             request.input_token_len=sample["prompt_len"]
             request.output_token_len=sample["completion_len"]
             return request
-        # logging.debug(f"No matches with err_perc={err_perc}, trying smaller range")
-        err_perc-=err_step
+        logging.debug(f"No matches with err_perc={err_perc}, trying bigger range")
+        err_perc+=err_step
     
     # logging.warning(f"No matches found with direct range matching, trying closest match")
     target_total=target_input_len+target_output_len

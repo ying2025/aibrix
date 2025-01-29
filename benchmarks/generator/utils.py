@@ -5,11 +5,90 @@ import csv
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from typing import List, Union, Dict, Any, Optional
 from transformers import (AutoTokenizer, PreTrainedTokenizer,
                           PreTrainedTokenizerFast)
 from datetime import datetime
+
+def convert_to_stat_df(qps_file: str, 
+                       input_file: str, 
+                       output_file: str,
+                       internal_trace_type: str) -> pd.DataFrame:
+    if internal_trace_type == "maas":
+        # Load CSV files into DataFrames
+        qps_df = pd.read_csv(qps_file)
+        input_len_df = pd.read_csv(input_file)
+        output_len_df = pd.read_csv(output_file)
+
+        # Rename columns for merging and clarity
+        input_len_df.rename(columns={"P50": "input_len_p50", "P70": "input_len_p70", "P90": "input_len_p90", "P99": "input_len_p99"}, inplace=True)
+        output_len_df.rename(columns={"P50": "output_len_p50", "P70": "output_len_p70", "P95": "output_len_p90", "P99": "output_len_p99"}, inplace=True)
+        qps_df.rename(columns={"Success": "qps_success"}, inplace=True)
+
+        # Merge DataFrames on the 'Time' column (now renamed to 'timestamp')
+        merged_df = pd.merge(input_len_df, output_len_df, on="Time")
+        merged_df = pd.merge(merged_df, qps_df, on="Time")
+
+        # Drop unwanted columns (if needed)
+        merged_df.drop(columns=["Total", "5xx Error", "4xx Error"], inplace=True)
+
+        # Rename the 'Time' column to 'timestamp'
+        merged_df.rename(columns={"Time": "timestamp"}, inplace=True)
+
+        # Rearrange columns to match the desired order
+        merged_df = merged_df[[
+            "timestamp",
+            "input_len_p50", "input_len_p70", "input_len_p90", "input_len_p99",
+            "output_len_p50", "output_len_p70", "output_len_p90", "output_len_p99",
+            "qps_success"
+        ]]
+        merged_df['timestamp'] = pd.to_datetime(merged_df['timestamp'])
+    elif internal_trace_type == "cloudide":
+        if input_file != output_file:
+            logging.error(f"input file {input_file} does not match output_file {output_file}")
+        df = pd.read_csv(input_file, parse_dates=['Time'])
+        df = df.replace("undefined", 0)
+        df['Time'] = pd.to_datetime(df['Time'], unit = 'ms')  # Ensure timestamp is a datetime object
+        df = df.set_index('Time')  # Set 'Time' as index for rolling window calculation
+        df_rate = pd.read_csv(qps_file, parse_dates=['Time'])
+        df_rate.columns.values[1] = "Rate"
+        df_rate = df_rate.replace("undefined", 0)
+        df_rate['Time'] = pd.to_datetime(df_rate['Time'], unit = 'ms') 
+        df_rate = df_rate.set_index('Time')
+        
+        
+        sent_columns = df.filter(regex = r'^sent_bytes.rate@')
+        sent_columns = sent_columns.apply(pd.to_numeric, errors='coerce').fillna(0)
+        df['sent'] = sent_columns.sum(axis = 1)
+        
+        recv_columns = df.filter(regex = r'^recv_bytes.rate@')
+        recv_columns = recv_columns.apply(pd.to_numeric, errors='coerce').fillna(0)
+        df['recv'] = recv_columns.sum(axis = 1)
+        
+        df_merged = pd.merge(df, df_rate, left_index=True, right_index=True, how='outer')
+        df_merged = df_merged.fillna(0)
+        df_merged = df_merged.apply(pd.to_numeric, errors='coerce').fillna(0)
+        
+        df_merged['sent_rate'] = df_merged.apply(lambda row : 0 if row['Rate'] == 0 else row['sent'] / row['Rate'], axis=1)
+        df_merged['recv_rate'] = df_merged.apply(lambda row : 0 if row['Rate'] == 0 else row['recv'] / row['Rate'], axis=1)
+        
+        df_merged = df_merged.reset_index()
+        merged_df = pd.DataFrame({
+            "timestamp": df_merged['Time'],
+            "input_len_p50": df_merged['recv_rate'], 
+            "input_len_p70": df_merged['recv_rate'],
+            "input_len_p90": df_merged['recv_rate'],
+            "input_len_p99": df_merged['recv_rate'],
+            "output_len_p50": df_merged['sent_rate'], 
+            "output_len_p70": df_merged['sent_rate'], 
+            "output_len_p90": df_merged['sent_rate'], 
+            "output_len_p99": df_merged['sent_rate'], 
+            "qps_success":df_merged['Rate'], 
+        })
+        df_merged.to_csv("df_merged.csv")
+    return merged_df
 
 def get_sample_interval_ms(file_path):
     # Initialize variables

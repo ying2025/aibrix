@@ -19,7 +19,7 @@ from transformers import PreTrainedTokenizerBase
 from datetime import timedelta
 from sample_request import (load_requests,  sample_requests_len_range, sample_requests_all)
 from sample_request import (load_sharegpt_requests,  sample_sharegpt_requests_len_range, Request, RequestEncoder, RANDOM_SEED)
-from utils import (get_tokenizer, plot_workload, make_serializable, save_workload, plot_rps_workload, get_sample_interval_ms)
+from utils import (convert_to_stat_df, get_tokenizer, plot_workload, make_serializable, save_workload, plot_rps_workload, get_sample_interval_ms)
 from collections import defaultdict
 
 # Set up logging to print only warning and above level messages
@@ -38,6 +38,9 @@ def generate_from_internal_csv(file_path: str,
                             input_trace: str = None,
                             output_trace: str = None,
                             to_jsonl: bool = False,
+                            qps_scale: float = 1.0,
+                            input_scale: float = 1.0,
+                            output_scale: float = 1.0,
                             ) -> Dict[str, Any]:
    traffic = []
    input_lengths = []
@@ -75,28 +78,36 @@ def generate_from_internal_csv(file_path: str,
    print(f"input_lengths size {len(input_lengths)} output_lengths size {len(output_lengths)}")
 
    # Generate workload
-   sharegpt_df = load_sharegpt_requests(dataset_path=prompt_file_path, tokenizer=tokenizer)
-   workload = {
-       "timestamp": 0, 
-       "requests": [] 
-   }
-
+   sharegpt_df = load_requests(dataset_path=prompt_file_path, tokenizer=tokenizer)
+   workload = []
+   total_ms = 0
+   print(traffic)
    for i, interval_requests in enumerate(traffic):
-       mean_rate = round(interval_requests / (summary_interval_ms / interval_ms))
-       input_length = input_lengths[i] if len(input_lengths)>0 else None
-       output_length = output_lengths[i] if len(output_lengths)>0 else None
-       
-       concurrent_sampled_reqs = sample_sharegpt_requests_len_range(
+       interval_requests = interval_requests / qps_scale
+       mean_rate = round(interval_requests) #round(interval_requests / (summary_interval_ms / interval_ms))
+       input_length = input_lengths[i] / input_scale if len(input_lengths)>0 else None
+       output_length = output_lengths[i] / output_scale if len(output_lengths)>0 else None
+       print(f"current total ms {total_ms} summary_interval_ms {summary_interval_ms} interval_ms {interval_ms}  mean_rate {mean_rate} input_length {input_length} output_length {output_length} interval_requests {interval_requests} ")
+       concurrent_sampled_reqs = sample_requests_len_range(
            df=sharegpt_df,
            num_requests=mean_rate,
            input_lens=[input_length] * mean_rate,
            output_lens=[output_length] * mean_rate,
            initial_err_perc=0.5,
            err_step=0.05
-       )
-       if concurrent_sampled_reqs:
-           workload["requests"].extend(concurrent_sampled_reqs)
-           
+           )
+       
+       for _ in range (0, int(summary_interval_ms/interval_ms)):
+           if concurrent_sampled_reqs:
+               workload.append({"timestamp": total_ms, "requests": concurrent_sampled_reqs})
+               total_ms += interval_ms
+               if total_ms >= duration_ms:
+                   print(f"total ms {total_ms} ")
+                   break
+       if total_ms >= duration_ms:
+           print(f"total ms {total_ms}")
+           break
+          
    workload = make_serializable(workload)
    save_workload(workload, output_file, use_jsonl=to_jsonl)
    return workload
@@ -236,9 +247,13 @@ def generate_synthetic(prompt_file_path: str,
 
 def generate_synthetic_rps(
         prompt_file_path: str,
+        duration_ms,
         rps_dist: List[int],
         input_token_len_dist: List[int],
         output_token_len_dist: List[int],
+        qps_scale: float,
+        input_scale: float,
+        output_scale: float,
     ) -> List[Dict[str, Any]]:
     
     if not (len(rps_dist) == len(input_token_len_dist) == len(output_token_len_dist)):
@@ -251,23 +266,24 @@ def generate_synthetic_rps(
         time_idx = int(current_time / 1000)
         if time_idx >= total_seconds:
             time_idx = total_seconds - 1
-        current_rate = rps_dist[time_idx]
-        current_input_len = input_token_len_dist[time_idx]
-        current_output_len = output_token_len_dist[time_idx]
-        inter_arrival_time = np.random.exponential(scale=1000/current_rate) 
+        current_rate = rps_dist[time_idx] / qps_scale
+        current_input_len = input_token_len_dist[time_idx] / input_scale
+        current_output_len = output_token_len_dist[time_idx] / output_scale
+        inter_arrival_time = 1000 if current_rate == 0 else np.random.exponential(scale=1000/current_rate) 
         current_time += inter_arrival_time
         if current_time < total_seconds * 1000:
             request = Request(int(current_time), req_id, current_input_len,current_output_len)
             workload.append(request)
             req_id += 1
+            if current_time > duration_ms:
+                break
     
-    print("start load_sharegpt")
     ts = time.time()
     if os.path.exists("sharegpt_df.csv"):
         print(f"Reading sharedgpt_df.csv")
         sharegpt_df = pd.read_csv("sharegpt_df.csv")
     else:
-        sharegpt_df = load_sharegpt_requests(dataset_path=prompt_file_path, tokenizer=tokenizer)
+        sharegpt_df = load_requests(dataset_path=prompt_file_path, tokenizer=tokenizer)
         sharegpt_df.to_csv("sharegpt_df.csv")
         print(f"Saved sharegpt_df {len(sharegpt_df)}")
     print(f"load_sharedgpt took {int(time.time() - ts)}s")
@@ -391,8 +407,7 @@ def pair_requests_with_prompts_round_robin(workload: List[List[Any]],
     return paired_workload
 
 
-def read_distribution_stats(csv_path: str) -> Tuple[List[Dict], List[Dict], List[Dict]]:
-    df = pd.read_csv(csv_path, parse_dates=['timestamp'])
+def read_distribution_stats(df: pd.DataFrame) -> Tuple[List[Dict], List[Dict], List[Dict]]:
     time_diffs = df['timestamp'].diff().dt.total_seconds()
     section_in_seconds = int(time_diffs.mean())  # Use average time difference
     input_len_configs = []
@@ -427,26 +442,43 @@ def read_distribution_stats(csv_path: str) -> Tuple[List[Dict], List[Dict], List
 
 ## New with grouping
 def generate_workload_from_stats(
-    csv_path: str,
+    qps_file: str,
+    input_file: str,
+    output_file: str,
     prompt_file: str,
     output_dir: str,
-    workload_subname,
+    duration_ms: int,
+    qps_scale: float,
+    input_scale: float,
+    output_scale: float,
+    workload_subname: str,
+    internal_trace_type: str,
 ) -> Dict:
-    input_len_configs, output_len_configs, rps_configs = read_distribution_stats(csv_path)
+    merged_df = convert_to_stat_df(qps_file, input_file, output_file, internal_trace_type)
+    input_len_configs, output_len_configs, rps_configs = read_distribution_stats(merged_df)
     input_len_dist = []
     output_len_dist = []
     rps_dist = []
     for config in rps_configs:
-        # rps_segment = generate_sine_rps_dist(**config)
         rps_segment = generate_poisson_rps_dist(config['mean_rps'], config['total_seconds'])
         rps_dist.extend(rps_segment)
-    for config in input_len_configs:
-        input_segment = generate_token_len_dist_with_percentiles(**config)
-        input_len_dist.extend(input_segment)
-    for config in output_len_configs:
-        output_segment = generate_token_len_dist_with_percentiles(**config)
-        output_len_dist.extend(output_segment)
-    
+    if internal_trace_type == "maas":
+        for config in input_len_configs:
+            config['scale'] = input_scale
+            input_segment = generate_token_len_dist_with_percentiles(**config)
+            input_len_dist.extend(input_segment)
+        for config in output_len_configs:
+            config['scale'] = output_scale
+            output_segment = generate_token_len_dist_with_percentiles(**config)
+            output_len_dist.extend(output_segment)
+    elif internal_trace_type == "cloudide":
+        for config in input_len_configs:
+            config['scale'] = input_scale
+            input_segment = generate_token_len_dist_with_constant(**config)
+            input_len_dist.extend(input_segment)
+            output_segment = generate_token_len_dist_with_constant(**config)
+            output_len_dist.extend(output_segment)
+    print(f"Generated rps_dist {rps_dist} output_len_dist {output_len_dist} input_len_dist: {input_len_dist}")
     scenarios = {
         'csv-based-scenario': {
             'rps_dist': rps_dist,
@@ -460,15 +492,19 @@ def generate_workload_from_stats(
         ts = time.time()
         generated_workload = generate_synthetic_rps(
             prompt_file,
+            duration_ms,
             scenario['rps_dist'],
             scenario['input_token_len_dist'],
             scenario['output_token_len_dist'],
+            qps_scale,
+            input_scale,
+            output_scale
         )
         print(f"Generated workload for {scenario_name} took {int(time.time() - ts)} seconds")
 
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        output_path = f"{output_dir}/generated_workload-{workload_subname}.jsonl"
+        output_path = f"{output_dir}/workload-{workload_subname}.jsonl"
 
         # Group requests by timestamp in dictionary
         timestamp_groups = defaultdict(list)
@@ -500,85 +536,6 @@ def generate_workload_from_stats(
     
     return workload_dict
 
-## Old without grouping
-# def generate_workload_from_stats(
-#     csv_path: str,
-#     prompt_file: str,
-#     output_dir: str,
-#     workload_subname,
-# ) -> Dict:
-#     input_len_configs, output_len_configs, rps_configs = read_distribution_stats(csv_path)
-#     input_len_dist = []
-#     output_len_dist = []
-#     rps_dist = []
-#     for config in rps_configs:
-#         # rps_segment = generate_sine_rps_dist(**config)
-#         rps_segment=generate_poisson_rps_dist(config['mean_rps'],config['total_seconds'])
-#         rps_dist.extend(rps_segment)
-#     for config in input_len_configs:
-#         input_segment = generate_token_len_dist_with_percentiles(**config)
-#         input_len_dist.extend(input_segment)
-#     for config in output_len_configs:
-#         output_segment = generate_token_len_dist_with_percentiles(**config)
-#         output_len_dist.extend(output_segment)
-#     scenarios = {
-#         'csv-based-scenario': {
-#             'rps_dist': rps_dist,
-#             'input_token_len_dist': input_len_dist,
-#             'output_token_len_dist': output_len_dist,
-#         }
-#     }
-#     workload_dict = {}
-#     for scenario_name, scenario in scenarios.items():
-#         ts = time.time()
-#         generated_workload = generate_synthetic_rps(
-#             prompt_file,
-#             scenario['rps_dist'],
-#             scenario['input_token_len_dist'],
-#             scenario['output_token_len_dist'],
-#         )
-#         print(f"Generated workload for {scenario_name} took {int(time.time() - ts)} seconds")
-
-#         if not os.path.exists(output_dir):
-#             os.makedirs(output_dir)
-#         output_path = f"{output_dir}/generated_workload-{workload_subname}.jsonl"
-
-#         flattened_workload = []
-#         for item in generated_workload:
-#             request = item["requests"][0]  # Each item has a single request
-#             flattened_workload.append({
-#                 "timestamp": item["timestamp"], 
-#                 "requests": [{
-#                     "Prompt Length": request.input_token_len,
-#                     "Output Length": request.output_token_len,
-#                     "prompt": request.prompt
-#                 }]
-#             })
-
-
-#         with open(output_path, 'w') as f:
-#             # for req in generated_workload:
-#             for req in flattened_workload:
-#                 json.dump(req, f, cls=RequestEncoder)
-#                 f.write('\n')
-#         print(f"** Saved generated workload to {output_path}")
-#         workload_dict[scenario_name] = generated_workload
-
-#     # After generating the distributions but before returning:
-#     ts = time.time()
-#     plot_distribution_comparison(
-#         csv_path=csv_path,
-#         generated_data={
-#             'input_token_len_dist': input_len_dist,
-#             'output_token_len_dist': output_len_dist,
-#             'rps_dist': rps_dist
-#         },
-#         output_path=f"{output_dir}/distribution_comparison-{workload_subname}.pdf"
-#     )
-#     print(f"Generated distribution comparison plot in {int(time.time() - ts)} seconds")
-
-#     return workload_dict
-
 def generate_token_len_dist_with_percentiles(
     p50: int,
     p70: int,
@@ -586,6 +543,7 @@ def generate_token_len_dist_with_percentiles(
     p99: int,
     period: int,
     total_seconds: int,
+    scale: float,
     amplitude_factor: float = 0.2  # Controls the amplitude of sinusoidal variation
 ) -> List[int]:
     if not (p50 < p70 < p90 < p99):
@@ -594,6 +552,7 @@ def generate_token_len_dist_with_percentiles(
         raise ValueError("Token lengths must be positive")
     percentiles = [0.50, 0.70, 0.90, 0.99]
     token_lengths = [p50, p70, p90, p99]
+    token_lengths = [x / scale for x in token_lengths]
     log_lengths = np.log(token_lengths)
     def objective(params, percs, lengths):
         mu, sigma = params
@@ -615,8 +574,26 @@ def generate_token_len_dist_with_percentiles(
     token_len_list = [int(max(1, x)) for x in token_len_list]
     return token_len_list
 
-
-
+def generate_token_len_dist_with_constant(
+    p50: int,
+    p70: int,
+    p90: int,
+    p99: int,
+    period: int,
+    total_seconds: int,
+    scale: float,
+    amplitude_factor: float = 0.2
+) -> List[int]:
+    rate = p50
+    t = np.arange(total_seconds)
+    rate = rate / scale
+    amplitude = rate * amplitude_factor
+    sinusoidal_variation = amplitude * np.sin(2 * np.pi * t / period)
+    base_samples = np.repeat(rate, total_seconds)
+    scale_factor = rate / np.median(base_samples)
+    token_len_list = base_samples * scale_factor + sinusoidal_variation
+    token_len_list = [int(max(1, x)) for x in token_len_list]
+    return token_len_list
 
 def calculate_percentiles(data,window_size, timestamps):
     percentiles=[]
@@ -716,9 +693,6 @@ if __name__ == '__main__':
     parser.add_argument('--num-prompts', type=int, default=100, help='Number of prompts to sample.')
     parser.add_argument('--trace-type', type=str, required=True, choices=['constant', 'synthetic', 'internal', 'azure', 'synthetic-rps', 'synthetic-from-csv-file'],
                         help='Type of trace consumed. Choose among: synthetic, internal, azure')
-    
-    parser.add_argument('--stats-csv', type=str, required=False, default=None,)
-
     parser.add_argument('--traffic-file', type=str, required=False, default=None,
                         help='Traffic file containing times of arrival, which workload generator depends upon to '
                              'convert to traffic used in workload. This is only needed for for internal and azure trace type. ')
@@ -734,8 +708,13 @@ if __name__ == '__main__':
     parser.add_argument('--interval-ms', type=int, required=False, default=1000,
                         help='Granularity of request injection interval in milliseconds.')
     parser.add_argument('--duration-ms', type=int, default=60000, help='Duration of the trace generated.')
-    parser.add_argument('--output-dir', type=str, required=False, default="output", help='Output directory to save '
-                                                                                         'the workload.')
+    parser.add_argument('--target-qps', type=int, required=False, default=1, help='Target QPS for the workload.')
+    parser.add_argument('--output-dir', type=str, required=False, default="output", help='Output directory to save ')
+    parser.add_argument('--qps-scale', type=float, required=False, default=1.0, help='QPS scaling factor')
+    parser.add_argument('--input-scale', type=float, required=False, default=1.0, help='Input length scaling factor')
+    parser.add_argument('--output-scale', type=float, required=False, default=1.0, help='Output length scaling factor')
+    parser.add_argument('--summary-interval-ms', type=float, required=False, default=1.0, help='Trace aggregated intervals in milliseconds')
+    parser.add_argument('--internal-trace-type', type=str, choices=['maas', 'cloudide'], default="maas", help='Type of internal traces')
     parser.add_argument('--output-format', type=str, choices=['json', 'jsonl'], default='json',
                         help='Set output data format to either .json or .jsonl (default is .json).')
     args = parser.parse_args()
@@ -746,7 +725,7 @@ if __name__ == '__main__':
     workload_subname = None
     if args.trace_type == "constant":
         generated_workload = generate_constant(prompt_file_path=args.prompt_file, 
-                                                qps=1,
+                                                qps=args.target_qps,
                                                 duration_ms=args.duration_ms, 
                                                 interval_ms=args.interval_ms,
                                                 output_file=f"{args.output_dir}/{args.trace_type}",
@@ -775,13 +754,20 @@ if __name__ == '__main__':
     
     
     elif args.trace_type == "synthetic-from-csv-file":
-        workload_subname = f"{args.trace_type}-{args.stats_csv.split('/')[-1].split('.')[0]}"
+        workload_subname = f"{args.trace_type}"
         print(f"Generating workload for {workload_subname}")
-        workload_dict = generate_workload_from_stats(
-            csv_path=args.stats_csv,
+        generated_workload = generate_workload_from_stats(
+            qps_file=args.traffic_file,
+            input_file=args.prompt_len_file, 
+            output_file=args.completion_len_file,
             prompt_file=args.prompt_file,
             output_dir=args.output_dir,
             workload_subname=workload_subname,
+            qps_scale=args.qps_scale,
+            input_scale=args.input_scale,
+            output_scale=args.output_scale,
+            duration_ms=args.duration_ms,
+            internal_trace_type=args.internal_trace_type
         )
 
     elif args.trace_type == "synthetic-rps":
@@ -841,6 +827,7 @@ if __name__ == '__main__':
     elif args.trace_type == "internal":
             generated_workload = generate_from_internal_csv(file_path=args.traffic_file, 
                                                             prompt_file_path=args.prompt_file, 
+                                                            summary_interval_ms=args.summary_interval_ms,
                                                             duration_ms=args.duration_ms, 
                                                             tokenizer=tokenizer,
                                                             interval_ms=args.interval_ms,
@@ -848,6 +835,9 @@ if __name__ == '__main__':
                                                             input_trace=args.prompt_len_file, 
                                                             output_trace=args.completion_len_file,
                                                             to_jsonl=(args.output_format == "jsonl"),
+                                                            qps_scale=args.qps_scale,
+                                                            input_scale=args.input_scale,
+                                                            output_scale=args.output_scale,
                                                             )
 
     elif args.trace_type == "azure":
@@ -862,10 +852,10 @@ if __name__ == '__main__':
 
     workload_dict[args.trace_type] = generated_workload
 
-    if workload_dict:
-        # Plot the workloads
-        # plot_workload(workload_dict, interval_ms=args.interval_ms, output_file=f"plot/{args.trace_type}.pdf")
-        if workload_subname:
-            plot_rps_workload(workload_dict, output_file=f"{args.output_dir}/plot-{workload_subname}.pdf")
-        else:
-            plot_workload(workload_dict, interval_ms=args.interval_ms, output_file=f"plot/{args.trace_type}")
+    # if workload_dict:
+    #     # Plot the workloads
+    #     # plot_workload(workload_dict, interval_ms=args.interval_ms, output_file=f"plot/{args.trace_type}.pdf")
+    #     if workload_subname:
+    #         plot_rps_workload(workload_dict, output_file=f"{args.output_dir}/plot-{workload_subname}.pdf")
+    #     else:
+    #         plot_workload(workload_dict, interval_ms=args.interval_ms, output_file=f"plot/{args.trace_type}")
