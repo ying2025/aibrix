@@ -7,6 +7,8 @@ import json
 import os
 import httpx
 import matplotlib.pyplot as plt
+import random
+from math import ceil, floor
 from utils import (load_workload, wrap_prompt_as_chat_message)
 logging.basicConfig(level=logging.INFO)
 
@@ -45,6 +47,12 @@ async def send_request_with_httpx(args, client, prompt, output_file, completion_
                 "input": prompt,
                 "output": data['choices'][0]['text'],
             }
+            if completion_map[request_id] != 0:
+                logging.error(f"Request {request_id} already completed")
+                assert False
+            completion_map[request_id] = 1
+            logging.warning(f"Batch {batch_id}, Request {request_id}, completed in {latency:.2f} seconds with throughput {result['throughput']:.2f} tokens/s")
+            logging.warning(f"Total sent requests so far: {len(completion_map)}, completed requests: {sum(completion_map.values())}, completion_ratio: {sum(completion_map.values()) / len(completion_map)*100:.2f}%")
         except Exception as e:
             logging.error(f"Status: {response.status_code}, Raw response: {response.text}")
             logging.error(f"Error parsing response from {args.endpoint}: {str(e)}")
@@ -60,17 +68,14 @@ async def send_request_with_httpx(args, client, prompt, output_file, completion_
                 "input": prompt,
                 "output": None,
             }
+        
+        ## Write result to JSONL file
         output_file.write(json.dumps(result) + "\n")
         output_file.flush()
-        if completion_map[request_id] != 0:
-            logging.error(f"Request {request_id} already completed")
-            assert False
-        completion_map[request_id] = 1
-        logging.warning(f"Batch {batch_id}, Request {request_id}, completed in {latency:.2f} seconds with throughput {result['throughput']:.2f} tokens/s")
-        logging.warning(f"Total sent requests so far: {len(completion_map)}, completed requests: {sum(completion_map.values())}, completion_ratio: {sum(completion_map.values()) / len(completion_map)*100:.2f}%")
+
         return result
    except Exception as e:
-       logging.error(f"Error sending request to at {args.endpoint}: {str(e)}\nFull error: {repr(e)}")
+       logging.error(f"Error, send_request_with_httpx, {repr(e)}")
        return None
 
 # Asynchronous request handler
@@ -131,7 +136,7 @@ async def send_request(api_key, client, model, endpoint, prompt, output_file, co
         logging.error(f"Error sending request to at {endpoint}: {str(e)}")
         return None
 
-def collapse_workload(load_struct, minimum_time_unit=500, write=False):
+def collapse_workload(load_struct, workload_path, minimum_time_unit, write):
     # Collapse requests
     collapsed_requests = {}
     for requests_dict in load_struct:
@@ -157,6 +162,32 @@ def collapse_workload(load_struct, minimum_time_unit=500, write=False):
         logging.info(f"Written collapsed workload to {collapsed_workload_path}")
     return collapsed_requests
 
+def scale_workload(workload, target_avg_rps):
+    min_ts = min(entry['timestamp'] for entry in workload)
+    second_counts = {}
+    for entry in workload:
+        second = (entry['timestamp'] - min_ts) // 1000
+        if second not in second_counts:
+            second_counts[second] = []
+        second_counts[second].extend(entry['requests'])
+    total_requests = sum(len(reqs) for reqs in second_counts.values())
+    total_seconds = max(second_counts.keys()) + 1
+    current_avg_rps = total_requests / total_seconds
+    scale_factor = target_avg_rps / current_avg_rps
+    scaled_workload = []
+    remaining_fraction = 0.0
+    for second, requests in sorted(second_counts.items()):
+        exact_requests = len(requests) * scale_factor + remaining_fraction
+        num_requests = int(exact_requests)
+        remaining_fraction = exact_requests - num_requests
+        if num_requests > 0:
+            sampled_requests = random.sample(requests, min(num_requests, len(requests)))
+            scaled_workload.append({
+                'timestamp': second * 1000 + min_ts,
+                'requests': sampled_requests
+            })
+    return scaled_workload
+
 async def new_benchmark_prescheduling2(args):
     # # openai client
     # client = openai.AsyncOpenAI(
@@ -167,9 +198,9 @@ async def new_benchmark_prescheduling2(args):
 
     # httpx client
     client = httpx.AsyncClient(timeout=300.0)
-
     load_struct = load_workload(args.workload_path)
-    collapsed_wrk = collapse_workload(load_struct, minimum_time_unit=1)
+    # load_struct = scale_workload(load_struct, target_avg_rps=5)
+    collapsed_wrk = collapse_workload(load_struct, args.workload_path, 1, False)
     rps_dict = {}
     for ts, requests in collapsed_wrk.items():
         second = ts//1000
@@ -431,6 +462,7 @@ if __name__ == "__main__":
     parser.add_argument('--output-dir', type=str, required=True)
     parser.add_argument('--output-file-path', type=str, default="output.jsonl")
     parser.add_argument('--routing-strategy', type=str, default="least-request")
+    # parser.add_argument('--target_avg_rps', type=int, default=5, help="Target average RPS")
 
     args = parser.parse_args()
     main(args)
