@@ -11,4 +11,12 @@ curl -X POST -v http://localhost:8888/v1/completions \
         "max_tokens": 4000}'
 
 
-# 33204
+python3 /Users/bytedance/projects/aibrix/benchmarks/generator/client.py \
+    --workload-path workload/original/20s.jsonl \
+    --endpoint "localhost:8888" \
+    --model deepseek-llm-7b-chat \
+    --api-key sk-kFJ12nKsFVfVmGpj3QzX65s4RbN2xJqWzPYCjYu7wT3BlbLi \
+    --output-dir temp \
+    --output-file-path temp/output.jsonl \
+    --routing-strategy least-request \
+    --target_avg_rps 5

@@ -50,15 +50,23 @@ def parse_experiment_output(lines):
     
     return df, base_time
 
-def get_autoscaler(output_dir):
-    if "apa" in output_dir.lower():
-        return "APA"
-    elif "hpa" in output_dir.lower():
-        return "HPA"
-    elif "kpa" in output_dir.lower():
-        return "KPA"
-    print(f"Error: Could not determine autoscaler from directory name: {output_dir}")
-    assert False
+def get_autoscaler_and_routing(output_dir):
+    routing = None
+    autoscaler = None
+    with open(f"{output_dir}/output.txt", 'r', encoding='utf-8') as f_:
+        lines = f_.readlines()
+        for line in lines:
+            if "routing" in line:
+                routing = line.split(":")[-1].strip()
+                break
+        for line in lines:
+            if "autoscaler" in line:
+                autoscaling = line.split(":")[-1].strip()
+                break
+    if routing is None or autoscaling == None:
+        print(f"plot-everything.py, Error: Could not determine routing from directory name: {output_dir}")
+        assert False
+    return autoscaling, routing
 
 def parse_performance_stats(file_content):
     stats = {}
@@ -182,8 +190,8 @@ def plot_combined_visualization(experiment_home_dir):
     ax_bar4 = fig.add_subplot(gs_bars[0, 3])
     
     # Colors and markers for different autoscalers
-    colors = {"APA": 'tab:blue', "KPA":'tab:orange', "HPA":'tab:green'}
-    markers = ['o', 's', '^']
+    colors = {"APA": 'tab:blue', "KPA":'tab:orange', "HPA":'tab:green', "random":"tab:violet", "least-request":"tab:red" , "least-kv-cache":"tab:purple", "least-busy-time":"tab:brown", "least-latency":"tab:pink"}
+    markers = {"random":"o", "least-request":"x", "least-kv-cache":"^", "least-busy-time":"s", "least-latency":"D"}
     
     # Get all subdirectories
     all_dir = [d for d in os.listdir(experiment_home_dir) 
@@ -192,11 +200,17 @@ def plot_combined_visualization(experiment_home_dir):
     # Process each directory for time series plots
     for idx, subdir in enumerate(all_dir):
         output_dir = os.path.join(experiment_home_dir, subdir)
-        autoscaler = get_autoscaler(output_dir)
+        autoscaler, routing = get_autoscaler_and_routing(output_dir)
         # capital letter for all characters
         autoscaler = autoscaler.upper()
-        color = colors[autoscaler]
-        marker = markers[idx % len(markers)]
+        if autoscaler in colors:
+            color = colors[autoscaler]
+        else:
+            color = colors[routing]
+        if routing in markers:
+            marker = markers[routing]
+        else:
+            marker = '.'
         
         # Read and parse data
         experiment_output_file = os.path.join(output_dir, "output.jsonl")
@@ -239,7 +253,16 @@ def plot_combined_visualization(experiment_home_dir):
         
         # Plot time series data
         # 1. Latency CDF
-        latencies_sorted = np.sort(df['latency'].values)
+        print(f"* dir: {subdir}")
+        print(f"* autoscaler: {autoscaler}")
+        print(f"* routing: {routing}")
+        try:
+            latencies_sorted = np.sort(df['latency'].values)
+        except Exception as e:
+            print(f"Error sorting latencies: {e}")
+            df.to_csv(f"{output_dir}/error_df.csv", index=False)
+            print(f"Saved error data to: {output_dir}/error_df.csv")
+            assert False
         p = np.arange(1, len(latencies_sorted) + 1) / len(latencies_sorted)
         ax_cdf.plot(latencies_sorted, p, label=f'{autoscaler}', color=color)
         
@@ -307,14 +330,17 @@ def plot_combined_visualization(experiment_home_dir):
     stats_list = []
     title_list = []
     color_list = []
+    marker_list = []
     for subdir in all_dir:
         stat_fn = os.path.join(experiment_home_dir, subdir, "performance_stats.txt")
         content = read_stats_file(stat_fn)
         if content:
             stats = parse_performance_stats(content)
-            autoscaler = get_autoscaler(subdir)
+            autoscaler, routing = get_autoscaler_and_routing(output_dir)
+            title = f"{autoscaler},{routing}"
             color_list.append(colors[autoscaler])
-            title_list.append(autoscaler)
+            marker_list.append(markers[autoscaler])
+            title_list.append(title)
             stats_list.append(stats)
     
     # Add performance comparison plots if stats are available
