@@ -39,7 +39,7 @@ All the sample files are in
 
 .. code-block:: bash
     
-    aibrix/docs/source/samples/autoscaling
+    root/samples/autoscaling
 
 Example HPA yaml config
 
