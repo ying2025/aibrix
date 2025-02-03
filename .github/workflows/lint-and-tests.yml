@@ -16,6 +16,7 @@ on:
       - 'pkg/**'
       - 'cmd/**'
       - 'api/**'
+      - 'pkg/**'
       - 'go.mod'
       - 'go.sum'
       - '.golangci.yml'
