@@ -29,7 +29,7 @@ def parse_log_file(filepath):
 def plot_metrics(logs_dir):
     all_data = pd.DataFrame()
     all_pod_logs_files = os.listdir(logs_dir)
-    print(f"Found {all_pod_logs_files} log files")
+    print(f"plot_metrics, Found {all_pod_logs_files} log files")
     for fn in all_pod_logs_files:
         if fn.endswith('.log'):
             temp = parse_log_file(os.path.join(logs_dir, fn))
