@@ -4,6 +4,7 @@ on:
   push:
     branches: [ "main" ]
     paths:
+      - '.github/workflows/**'
       - 'pkg/**'
       - 'cmd/**'
       - 'api/**'
@@ -13,10 +14,10 @@ on:
   pull_request:
     branches: [ "main" ]
     paths:
+      - '.github/workflows/**'
       - 'pkg/**'
       - 'cmd/**'
       - 'api/**'
-      - 'pkg/**'
       - 'go.mod'
       - 'go.sum'
       - '.golangci.yml'
