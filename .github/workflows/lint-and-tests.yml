@@ -72,3 +72,4 @@ jobs:
         with:
           flags: unittests
           file: cover.out
+          token: ${{ secrets.CODECOV_TOKEN }}
