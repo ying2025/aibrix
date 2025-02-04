@@ -35,7 +35,7 @@ It is simply applying podautoscaler yaml file.
 One important thing you should note is that the deployment name and the name in scaleTargetRef in PodAutoscaler must be same. 
 That's how AiBrix PodAutoscaler refers to the right deployment.
 
-All the sample files are in 
+All the sample files can be found in the following directory. 
 
 .. code-block:: bash
     
@@ -140,7 +140,7 @@ AiBrix controller manager collects the metrics from each pod.
 
 Expected log output. You can see the current metric is gpu_cache_usage_perc. You can check each pod's current metric value.
 
-.. image:: ../assets/images/autoscaling/aibrix-controller-manager-output.png
+.. image:: ../assets/images/autoscaler/aibrix-controller-manager-output.png
    :alt: AiBrix controller manager output
    :width: 600px
    :align: center
@@ -153,7 +153,7 @@ To describe the podautoscaler
 
 Example output
 
-.. image:: ../assets/images/autoscaling/podautoscaler-describe.png
+.. image:: ../assets/images/autoscaler/podautoscaler-describe.png
    :alt: PodAutoscaler describe
    :width: 600px
    :align: center
@@ -188,7 +188,7 @@ In AiBrix, user can easily deploy different autoscaler by simply applying k8s ya
     - There is no one autoscaler that outperforms others for all metrics (latency, cost). In addition, the results might depend on the workloads. Infrastructure should provide easy way to configure whichever autoscaling mechanism they want and should be easily configurable since different users have different preference. For example, one might prefer cost over performance or vice versa. 
 
 
-.. image:: ../assets/images/autoscaling/autoscaling_result.png
+.. image:: ../assets/images/autoscaler/autoscaling_result.png
    :alt: result
    :width: 600px
    :align: center
