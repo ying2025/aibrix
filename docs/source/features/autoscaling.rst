@@ -48,26 +48,27 @@ Example HPA yaml config
     apiVersion: autoscaling.aibrix.ai/v1alpha1
     kind: PodAutoscaler
     metadata:
-    name: podautoscaler-aibrix-model-deepseek-llm-7b-chat-hpa
-    namespace: default
-    labels:
+      name: podautoscaler-aibrix-model-deepseek-llm-7b-chat-hpa
+      namespace: default
+      labels:
         app.kubernetes.io/name: aibrix
         app.kubernetes.io/managed-by: kustomize
     spec:
-    scalingStrategy: "HPA"
-    minReplicas: 1
-    maxReplicas: 10
-    metricsSources:
-    - metricSourceType: "pod"
+      scalingStrategy: "HPA"
+      minReplicas: 1
+      maxReplicas: 10
+      metricsSources:
+      - metricSourceType: "pod"
         protocolType: "http"
         port: "8000"
         path: "/metrics"
         targetMetric: "gpu_cache_usage_perc"
         targetValue: "50"
-    scaleTargetRef:
+      scaleTargetRef:
         apiVersion: apps/v1
         kind: Deployment
         name: aibrix-model-deepseek-llm-7b-chat
+    
 
 Example KPA yaml config
 
@@ -76,24 +77,24 @@ Example KPA yaml config
     apiVersion: autoscaling.aibrix.ai/v1alpha1
     kind: PodAutoscaler
     metadata:
-    name: podautoscaler-aibrix-model-deepseek-llm-7b-chat-kpa
-    namespace: default
-    labels:
+      name: podautoscaler-aibrix-model-deepseek-llm-7b-chat-kpa
+      namespace: default
+      labels:
         app.kubernetes.io/name: aibrix
         app.kubernetes.io/managed-by: kustomize
         kpa.autoscaling.aibrix.ai/scale-down-delay: "3m"
     spec:
-    scalingStrategy: KPA
-    minReplicas: 1
-    maxReplicas: 10
-    metricsSources:
-    - metricSourceType: pod
-        protocolType: http
+      scalingStrategy: "KPA"
+      minReplicas: 1
+      maxReplicas: 10
+      metricsSources:
+      - metricSourceType: "pod"
+        protocolType: "http"
         port: "8000"
-        path: metrics
-        targetMetric: gpu_cache_usage_perc
+        path: "metrics"
+        targetMetric: "gpu_cache_usage_perc"
         targetValue: "0.5"
-    scaleTargetRef:
+      scaleTargetRef:
         apiVersion: apps/v1
         kind: Deployment
         name: aibrix-model-deepseek-llm-7b-chat
@@ -105,26 +106,26 @@ Example APA yaml config
     apiVersion: autoscaling.aibrix.ai/v1alpha1
     kind: PodAutoscaler
     metadata:
-    name: podautoscaler-aibrix-model-deepseek-llm-7b-chat-apa
-    namespace: default
-    labels:
+      name: podautoscaler-aibrix-model-deepseek-llm-7b-chat-apa
+      namespace: default
+      labels:
         app.kubernetes.io/name: aibrix
         app.kubernetes.io/managed-by: kustomize
         autoscaling.aibrix.ai/up-fluctuation-tolerance: "0.1"
         autoscaling.aibrix.ai/down-fluctuation-tolerance: "0.2"
         apa.autoscaling.aibrix.ai/window: "30s"
     spec:
-    scalingStrategy: "APA"
-    minReplicas: 1
-    maxReplicas: 10
-    metricsSources:
-    - metricSourceType: pod
-        protocolType: http
+      scalingStrategy: "APA"
+      minReplicas: 1
+      maxReplicas: 10
+      metricsSources:
+      - metricSourceType: "pod"
+        protocolType: "http"
         port: "8000"
-        path: metrics
+        path: "metrics"
         targetMetric: "gpu_cache_usage_perc"
         targetValue: "0.5"
-    scaleTargetRef:
+      scaleTargetRef:
         apiVersion: apps/v1
         kind: Deployment
         name: aibrix-model-deepseek-llm-7b-chat
@@ -168,7 +169,7 @@ In AiBrix, user can easily deploy different autoscaler by simply applying k8s ya
 
 - Set up
     - Model: Deepseek 7B chatbot model
-    - GPU type: V100
+    - GPU: NVIDIA V100
     - Max number of GPU: 8
 - Target metric and value
     - Target metric: gpu_kv_cache_utilization
