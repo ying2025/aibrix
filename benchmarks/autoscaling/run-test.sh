@@ -70,6 +70,7 @@ fi
 # Reset deployment
 python set_num_replicas.py --deployment ${target_deployment} --replicas 8
 kubectl rollout restart deploy aibrix-controller-manager -n aibrix-system
+kubectl rollout restart deploy aibrix-gateway-plugin -n aibrix-system
 kubectl rollout restart deploy ${target_deployment} -n default
 
 # Wait for pods to be ready
@@ -104,6 +105,10 @@ sleep 1
 
 echo routing: ${routing}
 
+python streaming_pod_log_to_file.py ${target_deployment} default ${pod_log_dir} & pid_1=$!
+python streaming_pod_log_to_file.py aibrix-controller-manager aibrix-system ${pod_log_dir} & pid_2=$!
+python streaming_pod_log_to_file.py aibrix-gateway-plugins aibrix-system ${pod_log_dir} & pid_3=$!
+
 output_jsonl_path=${experiment_result_dir}/output.jsonl
 python3 ${aibrix_repo}/benchmarks/generator/client.py \
     --workload-path ${input_workload_path} \
@@ -116,14 +121,20 @@ python3 ${aibrix_repo}/benchmarks/generator/client.py \
 
 echo "Experiment is done. date: $(date)"
 
-pod_log_dir="${experiment_result_dir}/pod_logs"
-echo "started dumping pod logs for ${target_deployment} to ${pod_log_dir}"
-python dump_pod_log.py ${target_deployment} ${pod_log_dir} default vllm-openai
-echo "done dumping pod logs for ${target_deployment} to ${pod_log_dir}"
+sleep 5
+kill ${pid_1}
+kill ${pid_2}
+kill ${pid_3}
+sleep 1
 
-echo "started dumping pod logs for aibrix-controller-manager to ${pod_log_dir}"
-python dump_pod_log.py aibrix-controller-manager ${pod_log_dir} aibrix-system manager
-echo "done dumping pod logs for aibrix-controller-manager to ${pod_log_dir}"
+# pod_log_dir="${experiment_result_dir}/pod_logs"
+# echo "started dumping pod logs for ${target_deployment} to ${pod_log_dir}"
+# python dump_pod_log.py ${target_deployment} ${pod_log_dir} default vllm-openai
+# echo "done dumping pod logs for ${target_deployment} to ${pod_log_dir}"
+
+# echo "started dumping pod logs for aibrix-controller-manager to ${pod_log_dir}"
+# python dump_pod_log.py aibrix-controller-manager ${pod_log_dir} aibrix-system manager
+# echo "done dumping pod logs for aibrix-controller-manager to ${pod_log_dir}"
 
 # Cleanup
 kubectl delete podautoscaler --all --all-namespaces

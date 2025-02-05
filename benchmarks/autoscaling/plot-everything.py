@@ -52,7 +52,7 @@ def parse_experiment_output(lines):
 
 def get_autoscaler_and_routing(output_dir):
     routing = None
-    autoscaler = None
+    autoscaling = None
     with open(f"{output_dir}/output.txt", 'r', encoding='utf-8') as f_:
         lines = f_.readlines()
         for line in lines:
@@ -64,9 +64,9 @@ def get_autoscaler_and_routing(output_dir):
                 autoscaling = line.split(":")[-1].strip()
                 break
     if routing is None or autoscaling == None:
-        print(f"plot-everything.py, Error: Could not determine routing from directory name: {output_dir}")
+        print(f"Error, plot-everything.py, Error: Could not determine routing from directory name: {output_dir}")
         assert False
-    return autoscaling, routing
+    return autoscaling.upper(), routing
 
 def parse_performance_stats(file_content):
     stats = {}
@@ -144,6 +144,18 @@ def analyze_performance(df):
             'Total Tokens (avg)': df['total_tokens'].mean(),
             'Prompt Tokens (avg)': df['prompt_tokens'].mean(),
             'Output Tokens (avg)': df['output_tokens'].mean(),
+            'Total Tokens (min)': df['total_tokens'].min(),
+            'Prompt Tokens (min)': df['prompt_tokens'].min(),
+            'Output Tokens (min)': df['output_tokens'].min(),
+            'Total Tokens (max)': df['total_tokens'].max(),
+            'Prompt Tokens (max)': df['prompt_tokens'].max(),
+            'Output Tokens (max)': df['output_tokens'].max(),
+            'Total Tokens (p99)': df['total_tokens'].quantile(0.99),
+            'Prompt Tokens (p99)': df['prompt_tokens'].quantile(0.99),
+            'Output Tokens (p99)': df['output_tokens'].quantile(0.99),
+            'Total Tokens (std)': df['total_tokens'].std(),
+            'Prompt Tokens (std)': df['prompt_tokens'].std(),
+            'Output Tokens (std)': df['output_tokens'].std(),
             # 'Total Num Requests': len(df),
             'Successful Num Requests': len(df[df['status_code'] == 200]),
             'Failed Num Requests': len(df[df['status_code'] != 200]),
@@ -189,9 +201,27 @@ def plot_combined_visualization(experiment_home_dir):
     ax_bar3 = fig.add_subplot(gs_bars[0, 2])
     ax_bar4 = fig.add_subplot(gs_bars[0, 3])
     
-    # Colors and markers for different autoscalers
-    colors = {"APA": 'tab:blue', "KPA":'tab:orange', "HPA":'tab:green', "random":"tab:violet", "least-request":"tab:red" , "least-kv-cache":"tab:purple", "least-busy-time":"tab:brown", "least-latency":"tab:pink"}
-    markers = {"random":"o", "least-request":"x", "least-kv-cache":"^", "least-busy-time":"s", "least-latency":"D"}
+    colors = {"APA": 'tab:blue', \
+              "KPA":'tab:orange', \
+              "HPA":'tab:green', \
+            #   "NONE":"cyan", \
+              
+              "random":"tab:purple", \
+              "least-request":"tab:red" , \
+              "least-kv-cache":"tab:cyan", \
+              "least-busy-time":"tab:brown", \
+              "least-latency":"tab:pink", \
+              "throughput":"tab:olive", \
+                }
+    
+    markers = {\
+               "random":"o", \
+               "least-request":"x", \
+               "least-kv-cache":"^", \
+               "least-busy-time":"s", \
+               "least-latency":"D", \
+               "throughput":"P"\
+               }
     
     # Get all subdirectories
     all_dir = [d for d in os.listdir(experiment_home_dir) 
@@ -200,21 +230,25 @@ def plot_combined_visualization(experiment_home_dir):
     # Process each directory for time series plots
     for idx, subdir in enumerate(all_dir):
         output_dir = os.path.join(experiment_home_dir, subdir)
+        if "pod_logs" in output_dir:
+            continue
         autoscaler, routing = get_autoscaler_and_routing(output_dir)
-        # capital letter for all characters
-        autoscaler = autoscaler.upper()
-        if autoscaler in colors:
-            color = colors[autoscaler]
-        else:
+        if autoscaler not in colors or autoscaler == "none" or autoscaler == "NONE":
             color = colors[routing]
+        else:
+            color = colors[autoscaler]
         if routing in markers:
             marker = markers[routing]
         else:
             marker = '.'
-        
+        label_name = f'{autoscaler}-{routing}'
+
         # Read and parse data
         experiment_output_file = os.path.join(output_dir, "output.jsonl")
-        df, asyncio_base_time = parse_experiment_output(read_experiment_file(experiment_output_file))
+        parsed_lines = read_experiment_file(experiment_output_file)
+        print("*" * 50)
+        print(f"experiment_output_file: {experiment_output_file}")
+        df, asyncio_base_time = parse_experiment_output(parsed_lines)
         df = df.sort_values('start_time')
 
 
@@ -241,8 +275,8 @@ def plot_combined_visualization(experiment_home_dir):
         # Calculate accumulated cost
         if 'accumulated_cost' not in pod_count_df.columns:
             cost_per_pod_per_hour = 1
-            total_cost = 0
-            pod_count_df['accumulated_cost'] = 0
+            total_cost = 0.0
+            pod_count_df['accumulated_cost'] = 0.0
             for i in range(1, len(pod_count_df)):
                 duration = (pod_count_df.iloc[i]['asyncio_time'] - 
                           pod_count_df.iloc[i-1]['asyncio_time']) / 3600
@@ -264,16 +298,17 @@ def plot_combined_visualization(experiment_home_dir):
             print(f"Saved error data to: {output_dir}/error_df.csv")
             assert False
         p = np.arange(1, len(latencies_sorted) + 1) / len(latencies_sorted)
-        ax_cdf.plot(latencies_sorted, p, label=f'{autoscaler}', color=color)
+        ax_cdf.plot(latencies_sorted, p, label=label_name, color=color)
         
         # 2. Latency over time
         # ax_latency.scatter(df['end_time'], df['latency'], label=f'{autoscaler}', color=color, marker='.', s=5, alpha=0.3)
-        ax_rps.plot(df['start_time'], df['rps'], label=f"{autoscaler}", color=color, linewidth=0.3, alpha=0.5)
+        ax_rps.plot(df['start_time'], df['rps'], label=label_name, color=color, linewidth=0.5, alpha=0.7)
+        print(f"Max time: {label_name}, {df['start_time'].max()}")
         
 
         # 3. Running pods over time
         ax_pods.plot(pod_count_df['asyncio_time'], pod_count_df['Running'],
-                    label=f'{autoscaler}', color=color,
+                    label=label_name, color=color,
                     marker=marker, markersize=4, markevery=0.1)
         # ax_pods_twin.plot(df['start_time'], df['rps'], label=f"RPS-({autoscaler})", color=color, linewidth=0.3, alpha=0.5)
         # ax_pods_twin.scatter(df['start_time'], df['success_rps'], label="Goodput", color=color, s=2, alpha=0.3)
@@ -286,7 +321,7 @@ def plot_combined_visualization(experiment_home_dir):
         
         # 4. Accumulated cost over time
         ax_cost.plot(pod_count_df['asyncio_time'], pod_count_df['accumulated_cost'],
-                    label=f'{autoscaler}', color=color,
+                    label=label_name, color=color,
                     marker=marker, markersize=4, markevery=0.1)
     
     # Configure time series plots
@@ -315,7 +350,7 @@ def plot_combined_visualization(experiment_home_dir):
     lines_pods, labels_pods = ax_pods.get_legend_handles_labels()
     # lines_rps, labels_rps = ax_pods_twin.get_legend_handles_labels()
     # ax_pods.legend(lines_pods + lines_rps, labels_pods + labels_rps, loc='upper right')
-    ax_pods.legend(lines_pods, labels_pods, loc='upper right')
+    ax_pods.legend(lines_pods, labels_pods, loc='lower right')
     # ax_pods.legend()
     
     ax_cost.set_title('Accumulated Cost', fontsize=12)
@@ -332,14 +367,22 @@ def plot_combined_visualization(experiment_home_dir):
     color_list = []
     marker_list = []
     for subdir in all_dir:
+        output_dir = os.path.join(experiment_home_dir, subdir)
+        if "pod_logs" in subdir:
+            continue
         stat_fn = os.path.join(experiment_home_dir, subdir, "performance_stats.txt")
         content = read_stats_file(stat_fn)
         if content:
             stats = parse_performance_stats(content)
             autoscaler, routing = get_autoscaler_and_routing(output_dir)
+            # print(f"autoscaler: {autoscaler}, routing: {routing}")
             title = f"{autoscaler},{routing}"
-            color_list.append(colors[autoscaler])
-            marker_list.append(markers[autoscaler])
+            if autoscaler is None or autoscaler == "none" or autoscaler == "NONE":
+                color_list.append(colors[routing])
+                # print(f"coloring, routing: {routing}, color: {colors[routing]}")
+            else:
+                color_list.append(colors[autoscaler])
+            marker_list.append(markers[routing])
             title_list.append(title)
             stats_list.append(stats)
     
@@ -362,7 +405,7 @@ def plot_combined_visualization(experiment_home_dir):
             # ax.set_yticks([])  # Remove y-axis ticks
             ax.set_xticks(x)
             ax.set_xticklabels(title_list, rotation=45)
-            ax.set_yticklabels([f'{int(y)}' if y > 1 else f'{y:.2f}' for y in ax.get_yticks()])
+            # ax.set_yticklabels([f'{int(y)}' if y > 1 else f'{y:.2f}' for y in ax.get_yticks()])
 
             ax.grid(True, linestyle='--', alpha=0.7)
             for bar in bars:
