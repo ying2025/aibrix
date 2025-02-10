@@ -7,7 +7,10 @@ routing=$3
 aibrix_repo="/Users/bytedance/projects/aibrix"
 api_key="sk-kFJ12nKsFVfVmGpj3QzX65s4RbN2xJqWzPYCjYu7wT3BlbLi"
 k8s_config_dir="deepseek-llm-7b-chat-v100"
-target_deployment="aibrix-model-deepseek-llm-7b-chat"
+
+#target_deployment="aibrix-model-deepseek-llm-7b-chat"
+target_deployment="deepseek-llm-7b-chat-v100"
+
 # Input validation
 if [ -z "$api_key" ]; then
     echo "API key is not set. Please set the API key in the script"
@@ -61,16 +64,20 @@ kubectl delete hpa --all --all-namespaces
 
 # Apply new autoscaler
 if [ "$autoscaler" == "none" ]; then
-    echo "No autoscaler is applied"
-    kubectl apply -f ${k8s_config_dir}/8_replica_hpa.yaml
+    # kubectl apply -f ${k8s_config_dir}/8_replica_hpa.yaml
+    # echo "Apply ${k8s_config_dir}/8_replica_hpa.yaml"
+
+    echo "No autoscaler should be applied."
+    python set_num_replicas.py --deployment ${target_deployment} --replicas 8
 else
     kubectl apply -f ${k8s_config_dir}/${autoscaler}.yaml
     echo "kubectl apply -f ${k8s_config_dir}/${autoscaler}.yaml"
+    python set_num_replicas.py --deployment ${target_deployment} --replicas 1
+    echo "Set number of replicas to 1"
 fi
-# Reset deployment
-python set_num_replicas.py --deployment ${target_deployment} --replicas 8
+
 kubectl rollout restart deploy aibrix-controller-manager -n aibrix-system
-kubectl rollout restart deploy aibrix-gateway-plugin -n aibrix-system
+kubectl rollout restart deploy aibrix-gateway-plugins -n aibrix-system
 kubectl rollout restart deploy ${target_deployment} -n default
 
 # Wait for pods to be ready

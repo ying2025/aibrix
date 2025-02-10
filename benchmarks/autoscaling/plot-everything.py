@@ -196,22 +196,23 @@ def plot_combined_visualization(experiment_home_dir):
     ax_bar4 = fig.add_subplot(gs_bars[0, 3])
     
     # Create subplots for bar plots
-    ax_bar1 = fig.add_subplot(gs_bars[0, 0])
-    ax_bar2 = fig.add_subplot(gs_bars[0, 1])
-    ax_bar3 = fig.add_subplot(gs_bars[0, 2])
-    ax_bar4 = fig.add_subplot(gs_bars[0, 3])
-    
-    colors = {"APA": 'tab:blue', \
-              "KPA":'tab:orange', \
-              "HPA":'tab:green', \
+    # ax_bar1 = fig.add_subplot(gs_bars[0, 0])
+    # ax_bar2 = fig.add_subplot(gs_bars[0, 1])
+    # ax_bar3 = fig.add_subplot(gs_bars[0, 2])
+    # ax_bar4 = fig.add_subplot(gs_bars[0, 3])
+    tab_colors = plt.get_cmap('tab20').colors
+    colors = {"APA": tab_colors[0], \
+              "KPA": tab_colors[1], \
+              "HPA": tab_colors[2], \
+              "OPTIMIZER-KPA": tab_colors[3], \
             #   "NONE":"cyan", \
               
-              "random":"tab:purple", \
-              "least-request":"tab:red" , \
-              "least-kv-cache":"tab:cyan", \
-              "least-busy-time":"tab:brown", \
-              "least-latency":"tab:pink", \
-              "throughput":"tab:olive", \
+              "random": tab_colors[4], \
+              "least-request": tab_colors[5], \
+              "least-kv-cache": tab_colors[6], \
+              "least-busy-time": tab_colors[7], \
+              "least-latency": tab_colors[8], \
+              "throughput": tab_colors[9], \
                 }
     
     markers = {\
@@ -241,7 +242,8 @@ def plot_combined_visualization(experiment_home_dir):
             marker = markers[routing]
         else:
             marker = '.'
-        label_name = f'{autoscaler}-{routing}'
+        # label_name = f'{autoscaler}-{routing}'
+        label_name = f'{autoscaler}'
 
         # Read and parse data
         experiment_output_file = os.path.join(output_dir, "output.jsonl")
@@ -376,7 +378,8 @@ def plot_combined_visualization(experiment_home_dir):
             stats = parse_performance_stats(content)
             autoscaler, routing = get_autoscaler_and_routing(output_dir)
             # print(f"autoscaler: {autoscaler}, routing: {routing}")
-            title = f"{autoscaler},{routing}"
+            # title = f"{autoscaler},{routing}"
+            title = f"{autoscaler}"
             if autoscaler is None or autoscaler == "none" or autoscaler == "NONE":
                 color_list.append(colors[routing])
                 # print(f"coloring, routing: {routing}, color: {colors[routing]}")
@@ -401,17 +404,18 @@ def plot_combined_visualization(experiment_home_dir):
             bars = ax.bar(x, values, color=color_list[:len(values)])
             ax.set_title(metric, fontsize=12)
 
-            # ax.set_xticks([])  # Remove y-axis ticks
-            # ax.set_yticks([])  # Remove y-axis ticks
             ax.set_xticks(x)
-            ax.set_xticklabels(title_list, rotation=45)
-            # ax.set_yticklabels([f'{int(y)}' if y > 1 else f'{y:.2f}' for y in ax.get_yticks()])
-
+            # Adjust the rotation and alignment of tick labels
+            ax.set_xticklabels(title_list, rotation=45, ha='right')  # Add horizontal alignment
+            
+            # Adjust the bottom margin to ensure labels don't get cut off
+            plt.setp(ax.get_xticklabels(), rotation_mode="anchor")  # This ensures rotation happens around the right edge
+            
             ax.grid(True, linestyle='--', alpha=0.7)
             for bar in bars:
                 height = bar.get_height()
-                ax.text(bar.get_x() + bar.get_width()/2., height, f'{height:.2f}', ha='center', va='bottom')
-    
+                ax.text(bar.get_x() + bar.get_width()/2., height, f'{height:.2f}', 
+                        ha='center', va='bottom')
     plt.tight_layout()
     
     # Save the combined figure

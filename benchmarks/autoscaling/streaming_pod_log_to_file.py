@@ -17,9 +17,12 @@ def write_logs(keyword, fname, process):
             line = process.stdout.readline()
             if not line:
                 break
-            # if '"GET /metrics HTTP/1.1" 200 OK' not in line and "Received request" not in line:
-            # if "Avg prompt throughput:" in line:
+            if keyword is None:
+                # If there is no keyword, write all logs
+                log_file.write(line)
+                log_file.flush()
             if keyword and keyword in line:
+                # If there is keyword, write only the lines containing the keyword
                 log_file.write(line)
                 log_file.flush()
 
