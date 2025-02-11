@@ -242,8 +242,7 @@ def plot_combined_visualization(experiment_home_dir):
             marker = markers[routing]
         else:
             marker = '.'
-        # label_name = f'{autoscaler}-{routing}'
-        label_name = f'{autoscaler}'
+        label_name = f'{autoscaler}-{routing}'
 
         # Read and parse data
         experiment_output_file = os.path.join(output_dir, "output.jsonl")
@@ -377,9 +376,7 @@ def plot_combined_visualization(experiment_home_dir):
         if content:
             stats = parse_performance_stats(content)
             autoscaler, routing = get_autoscaler_and_routing(output_dir)
-            # print(f"autoscaler: {autoscaler}, routing: {routing}")
-            # title = f"{autoscaler},{routing}"
-            title = f"{autoscaler}"
+            title = f"{autoscaler},{routing}"
             if autoscaler is None or autoscaler == "none" or autoscaler == "NONE":
                 color_list.append(colors[routing])
                 # print(f"coloring, routing: {routing}, color: {colors[routing]}")
@@ -414,8 +411,7 @@ def plot_combined_visualization(experiment_home_dir):
             ax.grid(True, linestyle='--', alpha=0.7)
             for bar in bars:
                 height = bar.get_height()
-                ax.text(bar.get_x() + bar.get_width()/2., height, f'{height:.2f}', 
-                        ha='center', va='bottom')
+                ax.text(bar.get_x() + bar.get_width()/2., height, f'{height:.2f}', ha='center', va='bottom')
     plt.tight_layout()
     
     # Save the combined figure
