@@ -1,0 +1,157 @@
+W0208 23:15:33.130809       1 cache.go:154] environment variable AIBRIX_POD_METRIC_REFRESH_INTERVAL_MS is not set, using default value: 
+I0208 23:15:33.130853       1 cache.go:139] using default refresh interval: 50 ms
+I0208 23:15:33.137646       1 main.go:212] "msg"="starting cache" "logger"="setup"
+I0208 23:15:33.137673       1 main.go:220] "msg"="using in-cluster configuration" "logger"="setup"
+W0208 23:15:33.338153       1 cache.go:154] environment variable PROMETHEUS_ENDPOINT is not set, using default value: 
+W0208 23:15:33.338172       1 cache.go:154] environment variable PROMETHEUS_BASIC_AUTH_USERNAME is not set, using default value: 
+W0208 23:15:33.338176       1 cache.go:154] environment variable PROMETHEUS_BASIC_AUTH_PASSWORD is not set, using default value: 
+I0208 23:15:33.338908       1 podautoscaler_controller.go:129] "Added AIBrix pod-autoscaler-controller successfully"
+I0208 23:15:33.338940       1 podautoscaler_controller.go:133] "Run pod-autoscaler-controller periodical syncs successfully"
+I0208 23:15:33.344376       1 modelrouter_controller.go:56] "Starting modelrouter controller"
+I0208 23:15:33.348200       1 kvcache_controller.go:124] "Finished to add kv-cache-controller"
+I0208 23:15:33.348226       1 main.go:257] "msg"="starting manager" "logger"="setup"
+I0208 23:15:33.348434       1 server.go:50] "msg"="starting server" "addr"={"IP":"::","Port":8081,"Zone":""} "kind"="health probe"
+I0208 23:15:33.449326       1 leaderelection.go:250] attempting to acquire leader lease aibrix-system/aibrix-controller-manager...
+I0208 23:16:00.048945       1 leaderelection.go:260] successfully acquired lease aibrix-system/aibrix-controller-manager
+I0208 23:16:00.049129       1 controller.go:178] "msg"="Starting EventSource" "controller"="podautoscaler" "controllerGroup"="autoscaling.aibrix.ai" "controllerKind"="PodAutoscaler" "source"="kind source: *v1alpha1.PodAutoscaler"
+I0208 23:16:00.049135       1 controller.go:178] "msg"="Starting EventSource" "controller"="rayclusterreplicaset" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="RayClusterReplicaSet" "source"="kind source: *v1alpha1.RayClusterReplicaSet"
+I0208 23:16:00.049152       1 controller.go:178] "msg"="Starting EventSource" "controller"="podautoscaler" "controllerGroup"="autoscaling.aibrix.ai" "controllerKind"="PodAutoscaler" "source"="kind source: *v2.HorizontalPodAutoscaler"
+I0208 23:16:00.049157       1 controller.go:178] "msg"="Starting EventSource" "controller"="rayclusterreplicaset" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="RayClusterReplicaSet" "source"="kind source: *v1.RayCluster"
+I0208 23:16:00.049164       1 controller.go:178] "msg"="Starting EventSource" "controller"="podautoscaler" "controllerGroup"="autoscaling.aibrix.ai" "controllerKind"="PodAutoscaler" "source"="channel source: 0xc000f22080"
+I0208 23:16:00.049169       1 controller.go:186] "msg"="Starting Controller" "controller"="rayclusterreplicaset" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="RayClusterReplicaSet"
+I0208 23:16:00.049176       1 controller.go:186] "msg"="Starting Controller" "controller"="podautoscaler" "controllerGroup"="autoscaling.aibrix.ai" "controllerKind"="PodAutoscaler"
+I0208 23:16:00.049194       1 controller.go:178] "msg"="Starting EventSource" "controller"="kv-cache-controller" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="KVCache" "source"="kind source: *v1alpha1.KVCache"
+I0208 23:16:00.049215       1 controller.go:178] "msg"="Starting EventSource" "controller"="kv-cache-controller" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="KVCache" "source"="kind source: *v1.Service"
+I0208 23:16:00.049227       1 controller.go:178] "msg"="Starting EventSource" "controller"="kv-cache-controller" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="KVCache" "source"="kind source: *v1.Deployment"
+I0208 23:16:00.049238       1 controller.go:178] "msg"="Starting EventSource" "controller"="kv-cache-controller" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="KVCache" "source"="kind source: *v1.Pod"
+I0208 23:16:00.049246       1 controller.go:186] "msg"="Starting Controller" "controller"="kv-cache-controller" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="KVCache"
+I0208 23:16:00.049278       1 controller.go:178] "msg"="Starting EventSource" "controller"="model-adapter-controller" "controllerGroup"="model.aibrix.ai" "controllerKind"="ModelAdapter" "source"="kind source: *v1alpha1.ModelAdapter"
+I0208 23:16:00.049524       1 controller.go:178] "msg"="Starting EventSource" "controller"="model-adapter-controller" "controllerGroup"="model.aibrix.ai" "controllerKind"="ModelAdapter" "source"="kind source: *v1.Service"
+I0208 23:16:00.049549       1 controller.go:178] "msg"="Starting EventSource" "controller"="model-adapter-controller" "controllerGroup"="model.aibrix.ai" "controllerKind"="ModelAdapter" "source"="kind source: *v1.EndpointSlice"
+I0208 23:16:00.049546       1 controller.go:178] "msg"="Starting EventSource" "controller"="rayclusterfleet" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="RayClusterFleet" "source"="kind source: *v1alpha1.RayClusterFleet"
+I0208 23:16:00.049647       1 controller.go:178] "msg"="Starting EventSource" "controller"="model-adapter-controller" "controllerGroup"="model.aibrix.ai" "controllerKind"="ModelAdapter" "source"="kind source: *v1.Pod"
+I0208 23:16:00.049676       1 controller.go:186] "msg"="Starting Controller" "controller"="model-adapter-controller" "controllerGroup"="model.aibrix.ai" "controllerKind"="ModelAdapter"
+I0208 23:16:00.049726       1 controller.go:178] "msg"="Starting EventSource" "controller"="rayclusterfleet" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="RayClusterFleet" "source"="kind source: *v1alpha1.RayClusterReplicaSet"
+I0208 23:16:00.049754       1 controller.go:178] "msg"="Starting EventSource" "controller"="rayclusterfleet" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="RayClusterFleet" "source"="kind source: *v1.RayCluster"
+I0208 23:16:00.049779       1 controller.go:186] "msg"="Starting Controller" "controller"="rayclusterfleet" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="RayClusterFleet"
+I0208 23:16:00.154145       1 controller.go:220] "msg"="Starting workers" "controller"="podautoscaler" "controllerGroup"="autoscaling.aibrix.ai" "controllerKind"="PodAutoscaler" "worker count"=1
+I0208 23:16:00.156287       1 controller.go:220] "msg"="Starting workers" "controller"="model-adapter-controller" "controllerGroup"="model.aibrix.ai" "controllerKind"="ModelAdapter" "worker count"=1
+I0208 23:16:00.156300       1 controller.go:220] "msg"="Starting workers" "controller"="rayclusterreplicaset" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="RayClusterReplicaSet" "worker count"=1
+I0208 23:16:00.156322       1 controller.go:220] "msg"="Starting workers" "controller"="kv-cache-controller" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="KVCache" "worker count"=1
+I0208 23:16:00.156324       1 controller.go:220] "msg"="Starting workers" "controller"="rayclusterfleet" "controllerGroup"="orchestration.aibrix.ai" "controllerKind"="RayClusterFleet" "worker count"=1
+I0208 23:16:00.158984       1 podautoscaler_controller.go:671] "Scaler not found, creating new scaler" metricKey="default/aibrix-model-deepseek-llm-7b-chat" type="KPA"
+I0208 23:16:00.159047       1 podautoscaler_controller.go:689] "New scaler added to AutoscalerMap" metricKey="default/aibrix-model-deepseek-llm-7b-chat" type="KPA" spec={"scaleTargetRef":{"kind":"Deployment","name":"aibrix-model-deepseek-llm-7b-chat","apiVersion":"apps/v1"},"minReplicas":1,"maxReplicas":10,"metricsSources":[{"metricSourceType":"domain","protocolType":"http","endpoint":"aibrix-gpu-optimizer.aibrix-system.svc.cluster.local:8080","path":"/metrics/default/deepseek-llm-7b-chat-v100","targetMetric":"vllm:deployment_replicas","targetValue":"1"}],"scalingStrategy":"KPA"}
+I0208 23:16:00.180806       1 kpa.go:330] "Operating in panic mode." desiredPodCount=1 desiredPanicPodCount=1
+I0208 23:16:00.180820       1 kpa.go:339] "Skipping pod count decrease" current=4 desired=1
+I0208 23:16:03.359755       1 kpa.go:330] "Operating in panic mode." desiredPodCount=1 desiredPanicPodCount=1
+I0208 23:16:03.359774       1 kpa.go:339] "Skipping pod count decrease" current=4 desired=1
+I0208 23:16:13.384169       1 kpa.go:330] "Operating in panic mode." desiredPodCount=1 desiredPanicPodCount=1
+I0208 23:16:13.384186       1 kpa.go:339] "Skipping pod count decrease" current=4 desired=1
+I0208 23:16:23.370450       1 kpa.go:330] "Operating in panic mode." desiredPodCount=1 desiredPanicPodCount=1
+I0208 23:16:23.370467       1 kpa.go:339] "Skipping pod count decrease" current=4 desired=1
+I0208 23:16:33.366505       1 kpa.go:330] "Operating in panic mode." desiredPodCount=1 desiredPanicPodCount=1
+I0208 23:16:33.366522       1 kpa.go:339] "Skipping pod count decrease" current=4 desired=1
+I0208 23:16:43.368552       1 kpa.go:330] "Operating in panic mode." desiredPodCount=1 desiredPanicPodCount=1
+I0208 23:16:43.368573       1 kpa.go:339] "Skipping pod count decrease" current=4 desired=1
+I0208 23:16:53.366269       1 kpa.go:330] "Operating in panic mode." desiredPodCount=1 desiredPanicPodCount=1
+I0208 23:16:53.366286       1 kpa.go:339] "Skipping pod count decrease" current=4 desired=1
+I0208 23:17:03.365917       1 kpa.go:330] "Operating in panic mode." desiredPodCount=1 desiredPanicPodCount=1
+I0208 23:17:03.365934       1 kpa.go:339] "Skipping pod count decrease" current=4 desired=1
+I0208 23:17:13.366271       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=2
+I0208 23:17:13.366290       1 kpa.go:336] "Increasing pods count." originalPodCount=4 desiredPodCount=8
+I0208 23:17:13.381912       1 podautoscaler_controller.go:488] "Successfully rescaled" PodAutoscaler="default/podautoscaler-deepseek-llm-7b-chat-v100-gpu-optimizer" currentReplicas=4 desiredReplicas=8 reason="vllm:deployment_replicas above target"
+I0208 23:17:23.367261       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=2
+I0208 23:17:33.367212       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=2
+I0208 23:17:43.366550       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:17:43.366568       1 kpa.go:339] "Skipping pod count decrease" current=8 desired=2
+I0208 23:17:53.368428       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:17:53.368446       1 kpa.go:339] "Skipping pod count decrease" current=8 desired=2
+I0208 23:18:03.366317       1 kpa.go:320] "Exit panicking."
+I0208 23:18:03.382817       1 podautoscaler_controller.go:488] "Successfully rescaled" PodAutoscaler="default/podautoscaler-deepseek-llm-7b-chat-v100-gpu-optimizer" currentReplicas=8 desiredReplicas=2 reason="All metrics below target"
+I0208 23:18:23.381939       1 podautoscaler_controller.go:488] "Successfully rescaled" PodAutoscaler="default/podautoscaler-deepseek-llm-7b-chat-v100-gpu-optimizer" currentReplicas=2 desiredReplicas=1 reason="All metrics below target"
+I0208 23:21:53.366162       1 kpa.go:309] "Begin panicking." panicTime="2025-02-08 23:21:53.366078781 +0000 UTC m=+380.245838721"
+I0208 23:21:53.366183       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:21:53.366192       1 kpa.go:336] "Increasing pods count." originalPodCount=1 desiredPodCount=2
+I0208 23:21:53.382340       1 podautoscaler_controller.go:488] "Successfully rescaled" PodAutoscaler="default/podautoscaler-deepseek-llm-7b-chat-v100-gpu-optimizer" currentReplicas=1 desiredReplicas=2 reason="vllm:deployment_replicas above target"
+I0208 23:22:03.365714       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:22:13.367197       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:22:23.366043       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=1
+I0208 23:22:33.366976       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=1
+I0208 23:22:43.366146       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=1
+I0208 23:22:53.366932       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=1
+I0208 23:23:03.367126       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=1
+I0208 23:23:13.366153       1 kpa.go:330] "Operating in panic mode." desiredPodCount=1 desiredPanicPodCount=1
+I0208 23:23:13.366170       1 kpa.go:339] "Skipping pod count decrease" current=2 desired=1
+I0208 23:23:23.366885       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:23:33.367454       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=1
+I0208 23:23:43.365570       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=1
+I0208 23:23:53.366763       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=1
+I0208 23:24:03.367518       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:24:13.367191       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:24:23.365612       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:24:33.367119       1 kpa.go:320] "Exit panicking."
+I0208 23:24:53.383181       1 podautoscaler_controller.go:488] "Successfully rescaled" PodAutoscaler="default/podautoscaler-deepseek-llm-7b-chat-v100-gpu-optimizer" currentReplicas=2 desiredReplicas=3 reason="vllm:deployment_replicas above target"
+I0208 23:27:43.381915       1 podautoscaler_controller.go:488] "Successfully rescaled" PodAutoscaler="default/podautoscaler-deepseek-llm-7b-chat-v100-gpu-optimizer" currentReplicas=3 desiredReplicas=2 reason="All metrics below target"
+I0208 23:31:33.383063       1 podautoscaler_controller.go:488] "Successfully rescaled" PodAutoscaler="default/podautoscaler-deepseek-llm-7b-chat-v100-gpu-optimizer" currentReplicas=2 desiredReplicas=1 reason="All metrics below target"
+I0208 23:34:13.366442       1 kpa.go:309] "Begin panicking." panicTime="2025-02-08 23:34:13.366344293 +0000 UTC m=+1120.246104246"
+I0208 23:34:13.366463       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:34:13.366473       1 kpa.go:336] "Increasing pods count." originalPodCount=1 desiredPodCount=2
+I0208 23:34:13.385717       1 podautoscaler_controller.go:488] "Successfully rescaled" PodAutoscaler="default/podautoscaler-deepseek-llm-7b-chat-v100-gpu-optimizer" currentReplicas=1 desiredReplicas=2 reason="vllm:deployment_replicas above target"
+I0208 23:34:23.366572       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:34:33.366738       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:34:43.365850       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:34:53.365942       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:35:03.366998       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:35:13.365846       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=1
+I0208 23:35:23.366829       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=1
+I0208 23:35:33.367267       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=1
+I0208 23:35:43.366600       1 kpa.go:330] "Operating in panic mode." desiredPodCount=2 desiredPanicPodCount=2
+I0208 23:35:53.366808       1 kpa.go:330] "Operating in panic mode." desiredPodCount=4 desiredPanicPodCount=4
+I0208 23:35:53.366826       1 kpa.go:336] "Increasing pods count." originalPodCount=2 desiredPodCount=4
+I0208 23:35:53.384137       1 podautoscaler_controller.go:488] "Successfully rescaled" PodAutoscaler="default/podautoscaler-deepseek-llm-7b-chat-v100-gpu-optimizer" currentReplicas=2 desiredReplicas=4 reason="vllm:deployment_replicas above target"
+I0208 23:36:03.365227       1 kpa.go:330] "Operating in panic mode." desiredPodCount=4 desiredPanicPodCount=4
+I0208 23:36:13.366987       1 kpa.go:330] "Operating in panic mode." desiredPodCount=4 desiredPanicPodCount=4
+I0208 23:36:23.366058       1 kpa.go:330] "Operating in panic mode." desiredPodCount=4 desiredPanicPodCount=4
+I0208 23:36:33.366733       1 kpa.go:330] "Operating in panic mode." desiredPodCount=4 desiredPanicPodCount=4
+I0208 23:36:43.366910       1 kpa.go:330] "Operating in panic mode." desiredPodCount=4 desiredPanicPodCount=4
+I0208 23:36:53.366013       1 kpa.go:330] "Operating in panic mode." desiredPodCount=4 desiredPanicPodCount=4
+I0208 23:37:03.367345       1 kpa.go:330] "Operating in panic mode." desiredPodCount=4 desiredPanicPodCount=4
+I0208 23:37:13.366532       1 kpa.go:330] "Operating in panic mode." desiredPodCount=4 desiredPanicPodCount=4
+I0208 23:37:23.366958       1 kpa.go:330] "Operating in panic mode." desiredPodCount=4 desiredPanicPodCount=4
+I0208 23:37:33.365539       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=8
+I0208 23:37:33.365560       1 kpa.go:336] "Increasing pods count." originalPodCount=4 desiredPodCount=8
+I0208 23:37:33.382272       1 podautoscaler_controller.go:488] "Successfully rescaled" PodAutoscaler="default/podautoscaler-deepseek-llm-7b-chat-v100-gpu-optimizer" currentReplicas=4 desiredReplicas=8 reason="vllm:deployment_replicas above target"
+I0208 23:37:43.367365       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=8
+I0208 23:37:53.366201       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=8
+I0208 23:38:03.365771       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=8
+I0208 23:38:13.366499       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=8
+I0208 23:38:23.366117       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=8
+I0208 23:38:33.368551       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=8
+I0208 23:38:43.366161       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=8
+I0208 23:38:53.366799       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=8
+I0208 23:39:03.366533       1 kpa.go:330] "Operating in panic mode." desiredPodCount=8 desiredPanicPodCount=8
+I0208 23:39:13.367443       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:39:13.367464       1 kpa.go:336] "Increasing pods count." originalPodCount=8 desiredPodCount=16
+I0208 23:39:13.382534       1 podautoscaler_controller.go:488] "Successfully rescaled" PodAutoscaler="default/podautoscaler-deepseek-llm-7b-chat-v100-gpu-optimizer" currentReplicas=8 desiredReplicas=10 reason="vllm:deployment_replicas above target"
+I0208 23:39:23.367599       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:39:33.365789       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:39:43.367058       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:39:53.365187       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:40:03.366857       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:40:13.366988       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:40:23.367031       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:40:33.366410       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:40:43.366774       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:40:53.366903       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:41:03.366930       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:41:13.367222       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:41:23.367173       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:41:33.366305       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:41:43.366810       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:41:53.366812       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:42:03.367509       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:42:13.370696       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:42:23.366837       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:42:33.365246       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:42:43.366510       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16
+I0208 23:42:53.365726       1 kpa.go:330] "Operating in panic mode." desiredPodCount=16 desiredPanicPodCount=16

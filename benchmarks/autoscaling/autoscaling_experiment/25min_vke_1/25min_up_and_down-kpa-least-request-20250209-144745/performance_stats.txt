@@ -1,0 +1,32 @@
+Performance Statistics, autoscaler: KPA
+Sample Count: 4674
+Average Latency: 8.855
+Latency P50: 0.584
+Latency P90: 25.821
+Latency P95: 51.136
+Latency P99: 86.827
+Latency Std Dev: 18.118
+Min Latency: 0.054
+Max Latency: 119.692
+Average RPS: 5.730
+Success RPS: 5.613
+Failed RPS: 0.117
+Total Tokens (avg): 469.9
+Prompt Tokens (avg): 309.2
+Output Tokens (avg): 160.6
+Total Tokens (min): 31.0
+Prompt Tokens (min): 2.0
+Output Tokens (min): 1.0
+Total Tokens (max): 3095.0
+Prompt Tokens (max): 1869.0
+Output Tokens (max): 2048.0
+Total Tokens (p99): 2366.1
+Prompt Tokens (p99): 958.0
+Output Tokens (p99): 2048.0
+Total Tokens (std): 434.7
+Prompt Tokens (std): 201.7
+Output Tokens (std): 404.6
+Successful Num Requests: 4600.000
+Failed Num Requests: 74.000
+Total Cost: 1.37
+Total Number of Requests: 5012

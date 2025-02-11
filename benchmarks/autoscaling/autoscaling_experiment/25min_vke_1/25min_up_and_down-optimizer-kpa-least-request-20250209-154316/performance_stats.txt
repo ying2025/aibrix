@@ -1,0 +1,32 @@
+Performance Statistics, autoscaler: OPTIMIZER-KPA
+Sample Count: 4640
+Average Latency: 19.133
+Latency P50: 1.603
+Latency P90: 76.647
+Latency P95: 96.734
+Latency P99: 114.463
+Latency Std Dev: 31.614
+Min Latency: 0.047
+Max Latency: 119.937
+Average RPS: 5.709
+Success RPS: 5.209
+Failed RPS: 0.500
+Total Tokens (avg): 452.9
+Prompt Tokens (avg): 310.9
+Output Tokens (avg): 142.0
+Total Tokens (min): 31.0
+Prompt Tokens (min): 2.0
+Output Tokens (min): 1.0
+Total Tokens (max): 3060.0
+Prompt Tokens (max): 1869.0
+Output Tokens (max): 2048.0
+Total Tokens (p99): 2324.8
+Prompt Tokens (p99): 957.4
+Output Tokens (p99): 2048.0
+Total Tokens (std): 403.3
+Prompt Tokens (std): 201.6
+Output Tokens (std): 369.2
+Successful Num Requests: 4362.000
+Failed Num Requests: 278.000
+Total Cost: 1.74
+Total Number of Requests: 5012
