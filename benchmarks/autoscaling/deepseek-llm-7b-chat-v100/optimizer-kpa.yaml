@@ -14,7 +14,7 @@ spec:
   metricsSources:
   - endpoint: aibrix-gpu-optimizer.aibrix-system.svc.cluster.local:8080
     metricSourceType: domain
-    path: /metrics/default/deepseek-llm-7b-chat-v100
+    path: /metrics/default/aibrix-model-deepseek-llm-7b-chat
     protocolType: http
     targetMetric: vllm:deployment_replicas
     targetValue: "1" 
