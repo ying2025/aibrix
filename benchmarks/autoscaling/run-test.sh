@@ -2,14 +2,16 @@
 
 input_workload_path=$1
 autoscaler=$2
-# target_avg_rps=$3
 routing=$3
+# target_avg_rps=$4 # will be added later
 aibrix_repo="/Users/bytedance/projects/aibrix"
-api_key="sk-kFJ12nKsFVfVmGpj3QzX65s4RbN2xJqWzPYCjYu7wT3BlbLi"
-k8s_config_dir="deepseek-llm-7b-chat-v100"
+api_key="" # set your api key
+k8s_yaml_dir="deepseek-llm-7b-chat-v100"
+target_deployment="deepseek-llm-7b-chat-v100" # "aibrix-model-deepseek-llm-7b-chat"
+ai_model=deepseek-llm-7b-chat
 
-#target_deployment="aibrix-model-deepseek-llm-7b-chat"
-target_deployment="deepseek-llm-7b-chat-v100"
+echo "Make sure ${target_deployment} is the right deployment."
+sleep 3
 
 # Input validation
 if [ -z "$api_key" ]; then
@@ -35,25 +37,30 @@ fi
 #     echo "${target_avg_rps} is not given. will be set to default value 5"
 #     target_avg_rps=5
 # fi
+if [${k8s_yaml_dir}/${autoscaler}.yaml file does not exist]; then
+    echo "${k8s_yaml_dir}/${autoscaler}.yaml does not exist.. Check the ${autoscaler}"
+    exit 1
+fi
 
 # Setup experiment directory
 workload_name=$(echo $input_workload_path | tr '/' '\n' | grep .jsonl | cut -d '.' -f 1)
-# experiment_result_dir="experiment_results/${workload_name}-${autoscaler}-${routing}-$(date +%Y%m%d-%H%M%S)"
-experiment_result_dir="routing_experiment/${workload_name}-${autoscaler}-${routing}-$(date +%Y%m%d-%H%M%S)"
-
+experiment_result_dir="experiment_results/${workload_name}-${autoscaler}-${routing}-$(date +%Y%m%d-%H%M%S)"
 if [ ! -d ${experiment_result_dir} ]; then
-    echo "output directory does not exist. Create the output directory"
+    echo "output directory does not exist. Create the output directory (${experiment_result_dir})"
     mkdir -p ${experiment_result_dir}
 fi
 
+echo "----------------------------------------"
 echo "workload_name: $workload_name"
 echo "target_deployment: $target_deployment"
 echo "routing: $routing"
 echo "autoscaler: $autoscaler"
 echo "input_workload_path: $input_workload_path"
 echo "experiment_result_dir: $experiment_result_dir"
+echo "----------------------------------------"
 
-# Start port-forwarding
+# Port-forwarding
+# It is needed only when you run the client in the laptop not inside the K8S cluster.
 kubectl -n envoy-gateway-system port-forward service/envoy-aibrix-system-aibrix-eg-903790dc 8888:80 &
 PORT_FORWARD_PID=$!
 echo "started port-forwarding with PID: $PORT_FORWARD_PID"
@@ -64,20 +71,23 @@ kubectl delete hpa --all --all-namespaces
 
 # Apply new autoscaler
 if [ "$autoscaler" == "none" ]; then
-    # kubectl apply -f ${k8s_config_dir}/8_replica_hpa.yaml
-    # echo "Apply ${k8s_config_dir}/8_replica_hpa.yaml"
-
     echo "No autoscaler should be applied."
+    echo "Set the number of replicas to \"8\" (this is subject to your set up.)"
     python set_num_replicas.py --deployment ${target_deployment} --replicas 8
 else
-    kubectl apply -f ${k8s_config_dir}/${autoscaler}.yaml
-    echo "kubectl apply -f ${k8s_config_dir}/${autoscaler}.yaml"
+    kubectl apply -f ${k8s_yaml_dir}/${autoscaler}.yaml
+    echo "kubectl apply -f ${k8s_yaml_dir}/${autoscaler}.yaml"
     python set_num_replicas.py --deployment ${target_deployment} --replicas 1
-    echo "Set number of replicas to 1"
+    echo "Set number of replicas to \"1\". Autoscaling experiment will start from 1 pod"
 fi
 
+echo "Restart aibrix-controller-manager deployment"
 kubectl rollout restart deploy aibrix-controller-manager -n aibrix-system
+
+echo "Restart aibrix-gateway-plugins deployment"
 kubectl rollout restart deploy aibrix-gateway-plugins -n aibrix-system
+
+echo "Restart ${target_deployment} deployment"
 kubectl rollout restart deploy ${target_deployment} -n default
 
 # Wait for pods to be ready
@@ -85,42 +95,32 @@ sleep_before_pod_check=20
 echo "Sleep for ${sleep_before_pod_check} seconds after restarting deployment"
 sleep ${sleep_before_pod_check}
 python check_k8s_is_ready.py ${target_deployment}
+python check_k8s_is_ready.py aibrix-controller-manager
+python check_k8s_is_ready.py aibrix-gateway-plugins
 
 # Start pod log monitoring
 pod_log_dir="${experiment_result_dir}/pod_logs"
 mkdir -p ${pod_log_dir}
 
-# Copy input workload
+# Copy the snapshot of input workload
 cp ${input_workload_path} ${experiment_result_dir}
 
-# Start pod counter
+# Start pod counter. It will run on background until the end of the experiment.
 python count_num_pods.py ${target_deployment} ${experiment_result_dir} &
 COUNT_NUM_POD_PID=$!
 echo "started count_num_pods.py with PID: $COUNT_NUM_POD_PID"
 
-# python pod_log_monitor.py aibrix-controller-manager ${pod_log_dir} aibrix-system manager &
-# CONTROLLER_LOG_MONITOR_PID=$!
-# echo "started controller log monitor with PID: $CONTROLLER_LOG_MONITOR_PID"
-
-# python pod_log_monitor.py ${target_deployment} ${pod_log_dir} default vllm-openai &
-# POD_LOG_MONITOR_PID=$!
-# echo "started pod log monitor with PID: $POD_LOG_MONITOR_PID"
-
-# Run experiment
-echo "Experiment starts in 1 second!!!"
-sleep 1
-
-echo routing: ${routing}
-
+# Streaming pod logs to files on the background
 python streaming_pod_log_to_file.py ${target_deployment} default ${pod_log_dir} & pid_1=$!
 python streaming_pod_log_to_file.py aibrix-controller-manager aibrix-system ${pod_log_dir} & pid_2=$!
 python streaming_pod_log_to_file.py aibrix-gateway-plugins aibrix-system ${pod_log_dir} & pid_3=$!
 
+# Run experiment!!!
 output_jsonl_path=${experiment_result_dir}/output.jsonl
 python3 ${aibrix_repo}/benchmarks/generator/client.py \
     --workload-path ${input_workload_path} \
     --endpoint "localhost:8888" \
-    --model deepseek-llm-7b-chat \
+    --model ${ai_model} \
     --api-key ${api_key} \
     --output-dir ${experiment_result_dir} \
     --routing-strategy ${routing} \
@@ -134,30 +134,14 @@ kill ${pid_2}
 kill ${pid_3}
 sleep 1
 
-# pod_log_dir="${experiment_result_dir}/pod_logs"
-# echo "started dumping pod logs for ${target_deployment} to ${pod_log_dir}"
-# python dump_pod_log.py ${target_deployment} ${pod_log_dir} default vllm-openai
-# echo "done dumping pod logs for ${target_deployment} to ${pod_log_dir}"
-
-# echo "started dumping pod logs for aibrix-controller-manager to ${pod_log_dir}"
-# python dump_pod_log.py aibrix-controller-manager ${pod_log_dir} aibrix-system manager
-# echo "done dumping pod logs for aibrix-controller-manager to ${pod_log_dir}"
-
 # Cleanup
 kubectl delete podautoscaler --all --all-namespaces
-
-# set the number of replicas back to 1
-# python set_num_replicas.py --deployment ${target_deployment} --replicas 1
+python set_num_replicas.py --deployment ${target_deployment} --replicas 1
 
 # Stop monitoring processes
 echo "Stopping monitoring processes..."
 kill $COUNT_NUM_POD_PID
 echo "killed count_num_pods.py with PID: $COUNT_NUM_POD_PID"
-
-# kill -INT $POD_LOG_MONITOR_PID
-# kill -INT $CONTROLLER_LOG_MONITOR_PID
-# sleep 5  # Give monitors time to collect final logs
-# echo "killed log monitors"
 
 kill $PORT_FORWARD_PID
 echo "killed port-forwarding with PID: $PORT_FORWARD_PID"
@@ -171,16 +155,16 @@ echo "killed port-forwarding with PID: $PORT_FORWARD_PID"
 # Copy output file
 cp output.txt ${experiment_result_dir}
 echo "copied output.txt to ${experiment_result_dir}"
+echo "Experiment completed."
 
-echo "Experiment completed successfully."
-
-# Cleanup function for handling script interruption
+# Cleanup function for handling interruption
 cleanup() {
     echo "Cleaning up..."
     kill $PORT_FORWARD_PID 2>/dev/null
     kill $COUNT_NUM_POD_PID 2>/dev/null
-    kill -INT $POD_LOG_MONITOR_PID 2>/dev/null
-    kill -INT $CONTROLLER_LOG_MONITOR_PID 2>/dev/null
+    kill $pid_1 2>/dev/null
+    kill $pid_2 2>/dev/null
+    kill $pid_3 2>/dev/null
     kubectl delete podautoscaler --all --all-namespaces
     echo "Cleanup completed"
     exit
