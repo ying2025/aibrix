@@ -50,23 +50,18 @@ def parse_experiment_output(lines):
     
     return df, base_time
 
-def get_autoscaler_and_routing(output_dir):
-    routing = None
+def get_autoscaler_name(output_dir):
     autoscaling = None
     with open(f"{output_dir}/output.txt", 'r', encoding='utf-8') as f_:
         lines = f_.readlines()
         for line in lines:
-            if "routing" in line:
-                routing = line.split(":")[-1].strip()
-                break
-        for line in lines:
             if "autoscaler" in line:
                 autoscaling = line.split(":")[-1].strip()
                 break
-    if routing is None or autoscaling == None:
-        print(f"Error, plot-everything.py, Error: Could not determine routing from directory name: {output_dir}")
+    if autoscaling == None:
+        print(f"Invalid parsed autoscaling name: {autoscaling}")
         assert False
-    return autoscaling.upper(), routing
+    return autoscaling.upper()
 
 def parse_performance_stats(file_content):
     stats = {}
@@ -221,7 +216,7 @@ def plot_combined_visualization(experiment_home_dir):
                "least-kv-cache":"^", \
                "least-busy-time":"s", \
                "least-latency":"D", \
-               "throughput":"P"\
+               "throughput":"P", \
                }
     
     # Get all subdirectories
@@ -233,16 +228,10 @@ def plot_combined_visualization(experiment_home_dir):
         output_dir = os.path.join(experiment_home_dir, subdir)
         if "pod_logs" in output_dir:
             continue
-        autoscaler, routing = get_autoscaler_and_routing(output_dir)
-        if autoscaler not in colors or autoscaler == "none" or autoscaler == "NONE":
-            color = colors[routing]
-        else:
-            color = colors[autoscaler]
-        if routing in markers:
-            marker = markers[routing]
-        else:
-            marker = '.'
-        label_name = f'{autoscaler}-{routing}'
+        autoscaler = get_autoscaler_name(output_dir)
+        color = colors[autoscaler]
+        marker = '.'
+        label_name = f'{autoscaler}'
 
         # Read and parse data
         experiment_output_file = os.path.join(output_dir, "output.jsonl")
@@ -290,7 +279,6 @@ def plot_combined_visualization(experiment_home_dir):
         # 1. Latency CDF
         print(f"* dir: {subdir}")
         print(f"* autoscaler: {autoscaler}")
-        print(f"* routing: {routing}")
         try:
             latencies_sorted = np.sort(df['latency'].values)
         except Exception as e:
@@ -366,7 +354,6 @@ def plot_combined_visualization(experiment_home_dir):
     stats_list = []
     title_list = []
     color_list = []
-    marker_list = []
     for subdir in all_dir:
         output_dir = os.path.join(experiment_home_dir, subdir)
         if "pod_logs" in subdir:
@@ -375,14 +362,12 @@ def plot_combined_visualization(experiment_home_dir):
         content = read_stats_file(stat_fn)
         if content:
             stats = parse_performance_stats(content)
-            autoscaler, routing = get_autoscaler_and_routing(output_dir)
-            title = f"{autoscaler},{routing}"
+            autoscaler = get_autoscaler_name(output_dir)
+            title = f"{autoscaler}"
             if autoscaler is None or autoscaler == "none" or autoscaler == "NONE":
-                color_list.append(colors[routing])
-                # print(f"coloring, routing: {routing}, color: {colors[routing]}")
+                color_list.append(colors[autoscaler])
             else:
                 color_list.append(colors[autoscaler])
-            marker_list.append(markers[routing])
             title_list.append(title)
             stats_list.append(stats)
     

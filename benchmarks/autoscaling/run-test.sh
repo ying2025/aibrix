@@ -2,18 +2,20 @@
 
 input_workload_path=$1
 autoscaler=$2
-routing=$3
-# target_avg_rps=$4 # will be added later
-aibrix_repo="/Users/bytedance/projects/aibrix"
-api_key="" # set your api key
+aibrix_repo="/Users/bytedance/projects/aibrix-2" # root dir of aibrix repo
+api_key="sk-kFJ12nKsFVfVmGpj3QzX65s4RbN2xJqWzPYCjYu7wT3BlbLi" # set your api key
 k8s_yaml_dir="deepseek-llm-7b-chat-v100"
 target_deployment="deepseek-llm-7b-chat-v100" # "aibrix-model-deepseek-llm-7b-chat"
-ai_model=deepseek-llm-7b-chat
+target_ai_model=deepseek-llm-7b-chat
 
 echo "Make sure ${target_deployment} is the right deployment."
 sleep 3
 
 # Input validation
+if [ -z "$aibrix_repo" ]; then
+    echo aibrix_repo is empty. Set it to root dir of aibrix repo
+    exit 1
+fi
 if [ -z "$api_key" ]; then
     echo "API key is not set. Please set the API key in the script"
     exit 1
@@ -28,23 +30,14 @@ if [ -z "$autoscaler" ]; then
     echo "Usage: $0 <input_workload_path> <autoscaler-mechanism>"
     exit 1
 fi
-if [ -z "$routing" ]; then
-    echo "routing is not given"
-    echo "Usage: $0 <input_workload_path> <autoscaler> <routing>"
-    exit 1
-fi
-# if [ -z "$target_avg_rps" ]; then
-#     echo "${target_avg_rps} is not given. will be set to default value 5"
-#     target_avg_rps=5
-# fi
-if [${k8s_yaml_dir}/${autoscaler}.yaml file does not exist]; then
-    echo "${k8s_yaml_dir}/${autoscaler}.yaml does not exist.. Check the ${autoscaler}"
+if [ ! -f "${k8s_yaml_dir}/${autoscaler}.yaml" ]; then
+    echo "${k8s_yaml_dir}/${autoscaler}.yaml does not exist. Check the ${autoscaler}"
     exit 1
 fi
 
 # Setup experiment directory
 workload_name=$(echo $input_workload_path | tr '/' '\n' | grep .jsonl | cut -d '.' -f 1)
-experiment_result_dir="experiment_results/${workload_name}-${autoscaler}-${routing}-$(date +%Y%m%d-%H%M%S)"
+experiment_result_dir="experiment_results/${workload_name}-${autoscaler}-$(date +%Y%m%d-%H%M%S)"
 if [ ! -d ${experiment_result_dir} ]; then
     echo "output directory does not exist. Create the output directory (${experiment_result_dir})"
     mkdir -p ${experiment_result_dir}
@@ -53,7 +46,6 @@ fi
 echo "----------------------------------------"
 echo "workload_name: $workload_name"
 echo "target_deployment: $target_deployment"
-echo "routing: $routing"
 echo "autoscaler: $autoscaler"
 echo "input_workload_path: $input_workload_path"
 echo "experiment_result_dir: $experiment_result_dir"
@@ -70,16 +62,10 @@ kubectl delete podautoscaler --all --all-namespaces
 kubectl delete hpa --all --all-namespaces
 
 # Apply new autoscaler
-if [ "$autoscaler" == "none" ]; then
-    echo "No autoscaler should be applied."
-    echo "Set the number of replicas to \"8\" (this is subject to your set up.)"
-    python set_num_replicas.py --deployment ${target_deployment} --replicas 8
-else
-    kubectl apply -f ${k8s_yaml_dir}/${autoscaler}.yaml
-    echo "kubectl apply -f ${k8s_yaml_dir}/${autoscaler}.yaml"
-    python set_num_replicas.py --deployment ${target_deployment} --replicas 1
-    echo "Set number of replicas to \"1\". Autoscaling experiment will start from 1 pod"
-fi
+kubectl apply -f ${k8s_yaml_dir}/${autoscaler}.yaml
+echo "kubectl apply -f ${k8s_yaml_dir}/${autoscaler}.yaml"
+python set_num_replicas.py --deployment ${target_deployment} --replicas 1
+echo "Set number of replicas to \"1\". Autoscaling experiment will start from 1 pod"
 
 echo "Restart aibrix-controller-manager deployment"
 kubectl rollout restart deploy aibrix-controller-manager -n aibrix-system
@@ -120,10 +106,9 @@ output_jsonl_path=${experiment_result_dir}/output.jsonl
 python3 ${aibrix_repo}/benchmarks/generator/client.py \
     --workload-path ${input_workload_path} \
     --endpoint "localhost:8888" \
-    --model ${ai_model} \
+    --model ${target_ai_model} \
     --api-key ${api_key} \
     --output-dir ${experiment_result_dir} \
-    --routing-strategy ${routing} \
     --output-file-path ${output_jsonl_path}
 
 echo "Experiment is done. date: $(date)"
@@ -145,12 +130,6 @@ echo "killed count_num_pods.py with PID: $COUNT_NUM_POD_PID"
 
 kill $PORT_FORWARD_PID
 echo "killed port-forwarding with PID: $PORT_FORWARD_PID"
-
-# # Parse logs and generate plots
-# python3 plot/plot-output.py ${experiment_result_dir}
-#     # --output-dir ${experiment_result_dir}
-#     # --autoscaler ${autoscaler} \
-#     # --workload ${workload_name} \
 
 # Copy output file
 cp output.txt ${experiment_result_dir}
