@@ -38,10 +38,11 @@ def save_proxy_logs_streaming(pod_log_dir, pod_name, namespace):
         stderr=subprocess.PIPE,
         universal_newlines=True
     )
-    if namespace == "default":
-        keyword = "Avg prompt throughput:"
-    else:
-        keyword = None
+    # if namespace == "default":
+    #     keyword = "Avg prompt throughput:"
+    # else:
+    #     keyword = None
+    keyword = None # you can specify keyword here to filter logs
     log_thread = threading.Thread(target=write_logs, args=(keyword, fname, process))
     log_thread.start()
     return process, log_thread
