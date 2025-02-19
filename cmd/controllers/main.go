@@ -49,6 +49,7 @@ import (
 	"github.com/vllm-project/aibrix/pkg/cache"
 	"github.com/vllm-project/aibrix/pkg/config"
 	"github.com/vllm-project/aibrix/pkg/controller"
+	apiwebhook "github.com/vllm-project/aibrix/pkg/webhook"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -278,6 +279,11 @@ func setupControllers(mgr ctrl.Manager, runtimeConfig config.RuntimeConfig, cert
 	// So here we can use more clean registration flow and there's no need to change logics in future.
 	if err := controller.SetupWithManager(mgr, runtimeConfig); err != nil {
 		setupLog.Error(err, "unable to setup controller")
+		os.Exit(1)
+	}
+
+	if err := apiwebhook.SetupBackendRuntimeWebhook(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "Model")
 		os.Exit(1)
 	}
 }
