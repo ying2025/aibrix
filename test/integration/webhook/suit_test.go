@@ -43,10 +43,10 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	autoscalingapi "github.com/aibrix/aibrix/api/autoscaling/v1alpha1"
-	modelapi "github.com/aibrix/aibrix/api/model/v1alpha1"
-	orcheapi "github.com/aibrix/aibrix/api/orchestration/v1alpha1"
-	apiwebhook "github.com/aibrix/aibrix/pkg/webhook"
+	autoscalingapi "github.com/vllm-project/aibrix/api/autoscaling/v1alpha1"
+	modelapi "github.com/vllm-project/aibrix/api/model/v1alpha1"
+	orcheapi "github.com/vllm-project/aibrix/api/orchestration/v1alpha1"
+	apiwebhook "github.com/vllm-project/aibrix/pkg/webhook"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
