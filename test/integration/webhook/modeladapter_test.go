@@ -38,7 +38,6 @@ var _ = ginkgo.Describe("modelAdapter default and validation", func() {
 		gomega.Expect(k8sClient.Create(ctx, ns)).To(gomega.Succeed())
 	})
 
-	// Delete all the Models for each case.
 	ginkgo.AfterEach(func() {
 		gomega.Expect(k8sClient.Delete(ctx, ns)).To(gomega.Succeed())
 		var adapters modelapi.ModelAdapterList
@@ -53,7 +52,6 @@ var _ = ginkgo.Describe("modelAdapter default and validation", func() {
 		adapter func() *modelapi.ModelAdapter
 		failed  bool
 	}
-	// TODO: add more testCases to cover update.
 	ginkgo.DescribeTable("test validating",
 		func(tc *testValidatingCase) {
 			if tc.failed {
