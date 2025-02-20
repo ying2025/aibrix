@@ -32,7 +32,7 @@ import (
 	"github.com/vllm-project/aibrix/pkg/features"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/aibrix/aibrix/pkg/cert"
+	"github.com/vllm-project/aibrix/pkg/cert"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
