@@ -33,5 +33,5 @@ kube::codegen::gen_client github.com/vllm-project/aibrix/api \
     --with-watch \
     --with-applyconfig \
     --output-dir "$REPO_ROOT"/pkg/client \
-    --output-pkg github.com/vllm-project/aibrix/client-go \
+    --output-pkg github.com/vllm-project/aibrix/pkg/client \
     --boilerplate "${REPO_ROOT}/hack/boilerplate.go.txt"
