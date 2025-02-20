@@ -23,7 +23,7 @@ source "${CODEGEN_PKG}/kube_codegen.sh"
 
 # TODO: remove the workaround when the issue is solved in the code-generator
 # (https://github.com/kubernetes/code-generator/issues/165).
-mkdir -p github.com && ln -s ../.. github.com/aibrix
+mkdir -p github.com && ln -s ../.. github.com/vllm-project
 trap "rm -r github.com" EXIT
 
 kube::codegen::gen_helpers github.com/vllm-project/aibrix/api \
