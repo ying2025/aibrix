@@ -95,7 +95,7 @@ def sample_requests(
     #     synthetic_prompt = "hi " * config_input_len
     #     # assign timestamp to -1 for all requests
     #     requests.append((synthetic_prompt, config_input_len, config_output_len, -1))
-    # return requests
+    return []
 
 
 async def get_request(
@@ -169,7 +169,7 @@ async def send_request(
     }
     if api_key is not None or api_key != "":
         headers["Authorization"] = f"Bearer {api_key}"
-    
+
     streaming = stream
     if backend == "vllm":
         pload = {
@@ -256,7 +256,7 @@ async def send_request(
             "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S %Z%z"),
             "E2E": request_latency,
             "status_code": status_code,  # Add status code to trace
-            "success": status_code == 200 if status_code else False  # Add success flag
+            "success": status_code == 200 if status_code else False,  # Add success flag
         }
         if len(token_latencies) > 0:
             request_trace["TTFT"] = time_to_first
@@ -319,7 +319,7 @@ def main(args: argparse.Namespace):
     # Set global temperature from args
     global TEMPERATURE
     TEMPERATURE = args.temperature
-    
+
     result = {}
     if args.verbose:
         print(args)
@@ -329,7 +329,7 @@ def main(args: argparse.Namespace):
         result["request_rate"] = args.request_rate
         result["seed"] = args.seed
         result["model"] = args.model
-        result["temperature"] = args.temperature  
+        result["temperature"] = args.temperature
         result["samples"] = args.num_prompts
 
     random.seed(args.seed)
