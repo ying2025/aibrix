@@ -10,7 +10,7 @@ images:
 - name: quay.io/kuberay/operator
   newName: aibrix/kuberay-operator
   newTag: v1.2.1-patch
-- name: envoyproxy/envoy
+- name: harbor.qihoo.net/intelligent-egineering-hbox2/aibrix-envoyproxy/envoy
   newTag: distroless-v1.31.0
 - name: busybox
   newTag: stable

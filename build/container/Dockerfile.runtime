@@ -7,7 +7,9 @@ FROM ${BASE_IMAGE} AS builder
 WORKDIR /app
 
 ARG POETRY_VERSION=1.8.3
-
+RUN echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list
 # Install dependencies
 RUN apt-get update \
     && apt-get install -y python3-dev build-essential \
@@ -31,7 +33,9 @@ FROM ${BASE_IMAGE}
 WORKDIR /app
 
 COPY --from=builder /app/dist/*.whl ./
-
+RUN echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list
 # Install build dependencies and clean up in one step (avoiding creating another new layer)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc python3-dev \

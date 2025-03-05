@@ -64,11 +64,11 @@ patches:
 
 images:
   - name: controller
-    newName: aibrix/controller-manager
+    newName: harbor.qihoo.net/intelligent-egineering-hbox2/aibrix-controller-manager
     newTag: nightly
   - name: gateway-plugins
-    newName: aibrix/gateway-plugins
+    newName: harbor.qihoo.net/intelligent-egineering-hbox2/aibrix-gateway-plugins
     newTag: nightly
   - name: metadata-service
-    newName: aibrix/metadata-service
+    newName: harbor.qihoo.net/intelligent-egineering-hbox2/aibrix-metadata-service
     newTag: nightly

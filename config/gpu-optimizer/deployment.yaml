@@ -17,7 +17,7 @@ spec:
       automountServiceAccountToken: true
       containers:
       - name: gpu-optimizer
-        image: aibrix/runtime:nightly
+        image: harbor.qihoo.net/intelligent-egineering-hbox2/aibrix-runtime:nightly
         command: ["python", "-m", "aibrix.gpu_optimizer.app"]
         ports:
         - containerPort: 8080
