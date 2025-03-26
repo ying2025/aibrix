@@ -38,7 +38,7 @@ RUN echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib 
     echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list
 # Install build dependencies and clean up in one step (avoiding creating another new layer)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc python3-dev \
+    && apt-get install -y --no-install-recommends gcc python3-dev mawk \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir ./*.whl \
